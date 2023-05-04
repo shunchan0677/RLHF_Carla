@@ -1,4 +1,4 @@
-# Deep Reinforcement Learning from Human Preferences
+# This is fork of https://github.com/mrahtz/learning-from-human-preferences
 
 Reproduction of OpenAI and DeepMind's [Deep Reinforcement Learning from Human
 Preferences](https://blog.openai.com/deep-reinforcement-learning-from-human-preferences/),
