@@ -13,6 +13,9 @@ import pyglet
 
 from a2c.common.atari_wrappers import wrap_deepmind
 from scipy.ndimage import zoom
+import cv2
+
+
 
 
 # https://github.com/joschu/modular_rl/blob/master/modular_rl/running_stat.py
@@ -66,19 +69,33 @@ class Im(object):
         self.display = display
 
     def imshow(self, arr):
+        #print("arr.shape")
+        #print(arr.shape)
+        arr = np.flipud(arr)
+
+        #cv2.imshow("Color Image", np.asarray(arr*255))
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+
+        #test = np.zeros((336,712,3))
+        #test[:,:,0] = arr[:,:,0]
+        #test[:,:,1] = arr[:,:,0]
+        #test[:,:,2] = arr[:,:,0]
+        #arr = test
+
         if self.window is None:
-            height, width = arr.shape
+            height, width, _ = arr.shape
             self.window = pyglet.window.Window(
                 width=width, height=height, display=self.display)
             self.width = width
             self.height = height
             self.isopen = True
 
-        assert arr.shape == (self.height, self.width), \
+        assert arr.shape == (self.height, self.width,3), \
             "You passed in an image with the wrong number shape"
 
         image = pyglet.image.ImageData(self.width, self.height,
-                                       'L', arr.tobytes(), pitch=-self.width)
+                                       'RGB', arr.tobytes())
         self.window.clear()
         self.window.switch_to()
         self.window.dispatch_events()
@@ -121,7 +138,10 @@ class VideoRenderer:
             x = int(fraction_played * width)
             frames[t][-1][x] = 128
 
-            zoomed_frame = zoom(frames[t], self.zoom_factor)
+            frames[t] = np.asarray(frames[t]*255)
+            zoomed_frame = zoom(frames[t], (self.zoom_factor, self.zoom_factor, 1))
+            #print("zoomed_frame.shape")
+            #print(zoomed_frame.shape)
             v.imshow(zoomed_frame)
 
             if self.mode == VideoRenderer.play_through_mode:
@@ -228,6 +248,17 @@ def batch_iter(data, batch_size, shuffle=False):
         start_idx += batch_size
 
 
+class DiscountedGymWrapper(gym.Wrapper):
+    def __init__(self, env, discount):
+        super(DiscountedGymWrapper, self).__init__(env)
+        self.discount = discount
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        discounted_reward = reward * self.discount
+        return obs, discounted_reward, done, info
+
+
 def make_env(env_id, seed=0):
     if env_id in ['carla-v0']:
         params = {
@@ -239,8 +270,8 @@ def make_env(env_id, seed=0):
             'discrete': False,  # whether to use discrete control space
             'discrete_acc': [-3.0, 0.0, 3.0],  # discrete value of accelerations
             'discrete_steer': [-0.2, 0.0, 0.2],  # discrete value of steering angles
-            'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
-            'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+            'continuous_accel_range': [-3.0, 3.0],  # continuous acceleration range
+            'continuous_steer_range': [-0.3, 0.3],  # continuous steering angle range
             'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
             'port': 2000,  # connection port
             'town': 'Town03',  # which town to simulate
@@ -257,8 +288,14 @@ def make_env(env_id, seed=0):
             'pixor_size': 64,  # size of the pixor labels
             'pixor': False,  # whether to output PIXOR observation
         }
+
+        discount =1.0
         env = gym.make(env_id,params=params)
-        return wrap_deepmind(env)
+        py_env = DiscountedGymWrapper(
+            env,
+            discount=discount
+        )
+        return py_env #wrap_deepmind(env)
     if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
         import gym_moving_dot
     env = gym.make(env_id)

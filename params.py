@@ -97,7 +97,7 @@ def get_git_rev():
 
 def add_general_args(parser):
     parser.add_argument('mode', choices=['gather_initial_prefs', 'pretrain_reward_predictor',
-                                         'train_policy_with_preferences', 'train_policy_with_original_rewards'])
+                                         'train_policy_with_preferences', 'train_policy_with_original_rewards',"train_policy_with_pretrained_predictor"])
     parser.add_argument('env')
 
     parser.add_argument('--test_mode', action='store_true')
@@ -127,7 +127,7 @@ def add_a2c_args(parser):
                         type=float, default=None,
                         help='If set, decay learning rate linearly, reaching '
                              ' zero at this many timesteps')
-    parser.add_argument('--lr', type=float, default=7e-4)
+    parser.add_argument('--lr', type=float, default=1e-4)
 
     parser.add_argument('--load_policy_ckpt_dir',
                         help='Load a policy checkpoint from this directory.')

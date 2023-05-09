@@ -71,13 +71,13 @@ class Model(object):
         R = tf.placeholder(tf.float32, [nbatch], name="C")
         LR = tf.placeholder(tf.float32, [])
 
-        print("ob_space")
-        print(ob_space["birdeye"])
+        #print("ob_space")
+        #print(ob_space["birdeye"])
 
         step_model = policy(
             sess, ob_space["birdeye"], ac_space, nenvs, 1, nstack, reuse=False, scope = "model")
-        print("ob_space")
-        print(ob_space)
+        #print("ob_space")
+        #print(ob_space)
         train_model = policy(
             sess, ob_space["birdeye"], ac_space, nenvs, nsteps, nstack, reuse=True, scope = "model")
         #print(ob_space)
@@ -183,8 +183,7 @@ class Model(object):
         # So that the plain-text 'checkpoint' file written uses relative paths,
         # which seems to be needed in order to avoid confusing saver.restore()
         # when restoring from FloydHub runs.
-        self.saver = tf.train.Saver(
-            max_to_keep=1, var_list=params, save_relative_paths=True)
+        self.saver = tf.train.Saver(max_to_keep=0,var_list=params, save_relative_paths=True)
         tf.global_variables_initializer().run(session=sess)
         self.update_wight = update_old_model
 
@@ -269,22 +268,26 @@ class Runner(object):
     
     def process_images(self, images_tuple):
         num_images = len(images_tuple)
-        gray_images = np.empty((num_images, 96, 96, 1))
+        gray_images = np.empty((num_images, 96, 96, 3))
 
         #print("len")
         #print(images_tuple.shape)
 
         if(len(images_tuple.shape)==2):
-            for i, image in enumerate(images_tuple):
-                gray_image = self.rgb2gray(image[0])
-                gray_images[i, :, :, 0] = gray_image
+            #for i, image in enumerate(images_tuple):
+            #    gray_image = self.rgb2gray(image[0])
+            #    gray_images[i, :, :, 0] = gray_image
 
-            gray_images = (gray_images * 255).astype(np.uint8)
+            #gray_images = (gray_images * 255).astype(np.uint8)
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!gray!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         else:
             #print(images_tuple[0]["birdeye"].shape)
-            gray_images[:,:,:,0] = cv2.resize(images_tuple[0]["birdeye"][:,:,1], (96, 96), interpolation=cv2.INTER_AREA)
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!gray!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            #gray_images[:,:,:,0] = cv2.resize(images_tuple[0]["birdeye"], (96, 96), interpolation=cv2.INTER_AREA)
+            gray_images[:,:,:,:] = cv2.resize(images_tuple[0]["birdeye"], (96, 96), interpolation=cv2.INTER_AREA)
 
             gray_images = (gray_images * 255).astype(np.uint8)
+            print(gray_images.shape)
 
         #print("max")
         #print(np.max(gray_images))
@@ -307,11 +310,18 @@ class Runner(object):
     def update_obs(self, obs):
         # Do frame-stacking here instead of the FrameStack wrapper to reduce
         # IPC overhead
+        #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!Update obs!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        #print(self.obs.shape)
+        #print(obs[0]["birdeye"].shape)
+        #print(obs[1])
         self.obs = np.roll(self.obs, shift=-1, axis=3)
 
-        #self.obs[:, :, :, -1] = obs[:, :, :, 0]
-        img = self.process_images(obs)
-        self.obs[:, :, :, -1] = cv2.resize(img[0,:,:,0], (256, 256), interpolation=cv2.INTER_AREA)
+        self.obs[:, :, :, -3:] = obs[0]["birdeye"][:, :, :]
+        #img = self.process_images(obs)
+        #self.obs = obs[0]["birdeye"] #cv2.resize(img[0,:,:,:], (256, 256), interpolation=cv2.INTER_AREA)
+        #for i in range(0,4):
+        #    self.obs[:, :, :, 4*i:4*i+3] = obs[i]["birdeye"]
+        #print(self.obs.shape)
 
     def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
         # Segments are only generated from the first worker.
@@ -322,7 +332,7 @@ class Runner(object):
 
         #self.display_grayscale_image(e0_obs[0,:,:,0])
 
-        assert_equal(e0_obs.shape, (self.nsteps, 84, 84, 4))
+        assert_equal(e0_obs.shape, (self.nsteps, 84, 84, 3*4))
         assert_equal(e0_rew.shape, (self.nsteps, ))
         assert_equal(e0_dones.shape, (self.nsteps, ))
 
@@ -352,7 +362,7 @@ class Runner(object):
             # Here we only need to send the last frame (the most recent one)
             # from the 4-frame stack, because we're just showing output to
             # the user.
-            self.episode_frames.append(e0_obs[step, :, :, -1])
+            self.episode_frames.append(e0_obs[step, :, :, -3:])
             if e0_dones[step]:
                 self.episode_vid_queue.put(self.episode_frames)
                 self.episode_frames = []
@@ -433,7 +443,7 @@ class Runner(object):
             num_seq, num_imgs, height, width, num_channels = mb_obs.shape
 
             # 出力画像系列の形状を設定
-            output_shape = (num_seq, num_imgs, 84, 84, 4)
+            output_shape = (num_seq, num_imgs, 84, 84, 4*3)
             output_mb_obs = np.zeros(output_shape)
 
             for i in range(num_seq):
@@ -445,16 +455,18 @@ class Runner(object):
                     # カラー画像をモノクロに変換し、リサイズ
                     mono_channels = []
                     for idx, color_channel in enumerate(color_channels):
-                        gray = color_channel[:,:,1]#]cv2.cvtColor(color_channel, cv2.COLOR_BGR2GRAY)
+                        gray = color_channel[:,:,:]#]cv2.cvtColor(color_channel, cv2.COLOR_BGR2GRAY)
                         #print(gray)
-                        gray = (gray * 255).astype(np.uint8)
+                        gray = (gray).astype(np.uint8)
                         resized_gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
                         #self.display_grayscale_image(gray)
 
                         mono_channels.append(resized_gray)
 
                     # モノクロ画像を4チャンネルに結合
-                    output_mb_obs[i, j] = np.stack(mono_channels, axis=-1)
+                    #print(mono_channels.shape)
+                    for p in range(4):
+                        output_mb_obs[i, j,:,:,3*p:3*p+3] = mono_channels[p]#np.stack(mono_channels[p], axis=-1)
 
             mb_obs_tmp = copy.copy(mb_obs)
             mb_obs = output_mb_obs
@@ -470,8 +482,8 @@ class Runner(object):
         # action.)
         logging.debug("Original rewards:\n%s", mb_rewards)
         if self.reward_predictor:
-            assert_equal(mb_obs.shape, (nenvs, self.nsteps, 84, 84, 4))
-            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, 84, 84, 4)
+            assert_equal(mb_obs.shape, (nenvs, self.nsteps, 84, 84, 3*4))
+            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, 84, 84, 3*4)
 
             rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
             assert_equal(rewards_allenvs.shape, (nenvs * self.nsteps, ))
@@ -627,6 +639,7 @@ def learn(policy,
 
         #print(policy_loss, value_loss, policy_entropy,actions)
         if(np.isnan(np.min(policy_loss))):
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!loss is Nan!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             exit(0)
 
         if update % log_interval == 0 and update != 0:
@@ -646,8 +659,9 @@ def learn(policy,
             logger.record_tabular("learning_rate", cur_lr)
             logger.dump_tabular()
 
-        if update != 0 and update % ckpt_save_interval == 0:
+        if update != 0 and update % (ckpt_save_interval * 10) == 0:
             model.save(ckpt_save_path, update)
+
             model.update_wight(model.train_model, model.train_model_old)
 
     model.save(ckpt_save_path, update)

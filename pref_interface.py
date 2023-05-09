@@ -15,7 +15,7 @@ import easy_tf_log
 import numpy as np
 
 from utils import VideoRenderer
-
+import cv2
 
 class PrefInterface:
 
@@ -24,6 +24,7 @@ class PrefInterface:
         if not synthetic_prefs:
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
                                           mode=VideoRenderer.restart_on_get_mode,
+                                          playback_speed=8,
                                           zoom=4)
         else:
             self.renderer = None
@@ -119,19 +120,28 @@ class PrefInterface:
         raise IndexError("No segment pairs yet untested")
 
     def ask_user(self, s1, s2):
+        print("!!!!!!!!!!!!!!ask user!!!!!!!!!!!!")
+        print(s1.frames[-1][:, :, -3:].shape)
+        print(s1.frames[-1][:, :, -3:]*255)
+
         vid = []
         seg_len = len(s1)
+        print(seg_len)
         for t in range(seg_len):
-            border = np.zeros((84, 10), dtype=np.uint8)
+            border = np.zeros((84, 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
-            frame = np.hstack((s1.frames[t][:, :, -1],
+            frame = np.hstack((s1.frames[t][:, :, -3:],
                                border,
-                               s2.frames[t][:, :, -1]))
+                               s2.frames[t][:, :, -3:]))
             vid.append(frame)
         n_pause_frames = 7
         for _ in range(n_pause_frames):
             vid.append(np.copy(vid[-1]))
+        print("vid.shape")
+        print(len(vid))
+        print(vid[0].shape)
         self.vid_q.put(vid)
+        
 
         while True:
             print("Segments {} and {}: ".format(s1.hash, s2.hash))

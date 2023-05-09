@@ -4,10 +4,16 @@ import tensorflow as tf
 from collections import deque
 
 def clip_actions(actions):
+    #clipped_actions = tf.stack([
+    #    tf.clip_by_value(actions[:, 0], 0, 1),
+    #    tf.clip_by_value(actions[:, 1], -1, 1),
+    #    #tf.clip_by_value(actions[:, 2], 0, 1)
+    #], axis=-1)
+
     clipped_actions = tf.stack([
-        tf.clip_by_value(actions[:, 0], 0, 1),
-        tf.clip_by_value(actions[:, 1], -1, 1),
-        #tf.clip_by_value(actions[:, 2], 0, 1)
+        tf.clip_by_value(actions[:, 0], 0, 3),
+        tf.clip_by_value(actions[:, 1], -0.3, 0.3),
+    #    #tf.clip_by_value(actions[:, 2], 0, 1)
     ], axis=-1)
     return clipped_actions
 

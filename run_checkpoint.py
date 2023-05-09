@@ -24,7 +24,7 @@ def main():
     args = parse_args()
 
     env = make_env(args.env)
-    print(env.continuous)
+    #print(env.continuous)
     model = get_model(args.policy_ckpt_dir)
     if args.reward_predictor_ckpt_dir:
         reward_predictor = get_reward_predictor(args.reward_predictor_ckpt_dir)
@@ -37,13 +37,14 @@ def main():
 def run_agent(env, model, reward_predictor, frame_interval_ms):
     nenvs = 1
     nstack = int(model.step_model.X.shape[-1])
-    nh, nw, nc = env.observation_space.shape
+    nh, nw, nc = env.observation_space["birdeye"].shape
     nc = 1
     obs = np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
     model_nenvs = int(model.step_model.X.shape[0])
     states = model.initial_state
     number_of_episode = 5
     reward_list = []
+    step_list = []
     if reward_predictor:
         value_graph = ValueGraph()
     while number_of_episode > 0:
@@ -66,7 +67,7 @@ def run_agent(env, model, reward_predictor, frame_interval_ms):
                 done = True
             obs = update_obs(obs, raw_obs, nc)
             episode_reward += reward
-            env.render()
+            #env.render()
             if reward_predictor is not None:
                 predicted_reward = reward_predictor.reward(obs)
                 # reward_predictor.reward returns reward for each frame in the
@@ -75,14 +76,21 @@ def run_agent(env, model, reward_predictor, frame_interval_ms):
                 value_graph.append(predicted_reward[0])
             time.sleep(frame_interval_ms * 1e-3)
         print("Episode reward:", episode_reward)
+        print("Episode step:", i)
         reward_list.append(episode_reward)
+        step_list.append(i)
         number_of_episode += -1
     print(reward_list)
+    print(step_list)
 
 
 def update_obs(obs, raw_obs, nc):
-    obs = np.roll(obs, shift=-nc, axis=3)
-    obs[:, :, :, -nc:] = process_images(raw_obs)
+    #obs = np.roll(obs, shift=-nc, axis=3)
+    #obs[:, :, :, -nc:] = process_images(raw_obs)
+    #print(raw_obs)
+    obs = np.roll(obs, shift=-1, axis=3)
+
+    obs[:, :, :, -3:] = raw_obs["birdeye"][:, :, :]
     return obs
 
 def display_gray_images(images_array):
@@ -109,8 +117,8 @@ def process_images(images_tuple):
         num_images = len(images_tuple)
         gray_images = np.empty((1, 96, 96, 1))
 
-        print("len")
-        print(len(np.array(images_tuple[0]).shape))
+        #print("len")
+        #print(len(np.array(images_tuple[0]).shape))
         if(len(np.array(images_tuple[0]).shape) == 3):
             gray_images[0,:,:,0] = images_tuple[0][:,:,1]
             display_gray_images(gray_images)

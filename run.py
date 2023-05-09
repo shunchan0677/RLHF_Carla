@@ -136,6 +136,24 @@ def run(general_params,
         start_policy_training_flag.put(True)
         a2c_proc.join()
         env.close()
+
+    elif general_params['mode'] == 'train_policy_with_pretrained_predictor':
+
+        cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
+        ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
+        env, a2c_proc = start_policy_training(
+            cluster_dict=cluster_dict,
+            make_reward_predictor=make_reward_predictor,
+            gen_segments=True,
+            start_policy_training_pipe=start_policy_training_flag,
+            seg_pipe=seg_pipe,
+            episode_vid_queue=episode_vid_queue,
+            log_dir=general_params['log_dir'],
+            a2c_params=a2c_params)
+        a2c_proc.join()
+        ps_proc.terminate()
+        env.close()
+
     elif general_params['mode'] == 'train_policy_with_preferences':
         cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
         ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
@@ -384,8 +402,8 @@ def start_episode_renderer():
     episode_vid_queue = Queue()
     renderer = VideoRenderer(
         episode_vid_queue,
-        playback_speed=2,
-        zoom=2,
+        playback_speed=8,
+        zoom=1,
         mode=VideoRenderer.play_through_mode)
     return episode_vid_queue, renderer
 
