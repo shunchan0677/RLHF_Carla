@@ -42,7 +42,7 @@ def run_agent(env, model, reward_predictor, frame_interval_ms):
     obs = np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
     model_nenvs = int(model.step_model.X.shape[0])
     states = model.initial_state
-    number_of_episode = 5
+    number_of_episode = 10
     reward_list = []
     step_list = []
     if reward_predictor:

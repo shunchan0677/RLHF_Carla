@@ -140,7 +140,9 @@ def run(general_params,
     elif general_params['mode'] == 'train_policy_with_pretrained_predictor':
 
         cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
+        #print("!!!!!load param!!!!!!!!!!!!")
         ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
+        #print("!!!!!start policy training!!!!!!!!!!!!")
         env, a2c_proc = start_policy_training(
             cluster_dict=cluster_dict,
             make_reward_predictor=make_reward_predictor,
@@ -282,6 +284,7 @@ def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
     def f():
         if make_reward_predictor:
             reward_predictor = make_reward_predictor('a2c', cluster_dict)
+            #reward_predictor = make_reward_predictor('ps', cluster_dict)
         else:
             reward_predictor = None
         misc_logs_dir = osp.join(log_dir, 'a2c_misc')
@@ -364,6 +367,7 @@ def start_reward_predictor_training(cluster_dict,
 
         save_prefs(log_dir, pref_db_train, pref_db_val)
 
+
         if not load_ckpt_dir:
             print("Pretraining reward predictor for {} epochs".format(
                 n_initial_epochs))
@@ -374,7 +378,11 @@ def start_reward_predictor_training(cluster_dict,
                 # fairly preferences small so that pretraining doesn't take too
                 # long.
                 print("Reward predictor training epoch {}".format(i))
+
+                #print("!!!!!!!!!!!!!!!!!!!!!!test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 rew_pred.train(pref_db_train, pref_db_val, val_interval)
+
+                #print("!!!!!!!!!!!!!!!!!!!!!!test2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 if i and i % ckpt_interval == 0:
                     rew_pred.save()
             print("Reward predictor pretraining done")

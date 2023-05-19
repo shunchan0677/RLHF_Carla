@@ -136,7 +136,9 @@ class RewardPredictorEnsemble:
             feed_dict[rp.s1] = [obs]
         # This will return nested lists of sizes n_preds x 1 x nsteps
         # (x 1 because of the batch size of 1)
+        #print("before sess run")
         rs = self.sess.run([rp.r1 for rp in self.rps], feed_dict)
+        #print("after sess run")
         rs = np.array(rs)
         # Get rid of the extra x 1 dimension
         rs = rs[:, 0, :]
@@ -151,6 +153,7 @@ class RewardPredictorEnsemble:
         ensemble separately, then averaging the resulting rewards across all
         ensemble members.)
         """
+        #print("reward func")
         assert_equal(obs.shape[1:], (84, 84, 3*4))
         n_steps = obs.shape[0]
 
@@ -158,6 +161,7 @@ class RewardPredictorEnsemble:
 
         ensemble_rs = self.raw_rewards(obs)
         logging.debug("Unnormalized rewards:\n%s", ensemble_rs)
+        print("Unnormalized rewards:\n%s", ensemble_rs)
 
         # Normalize rewards
 
@@ -227,7 +231,7 @@ class RewardPredictorEnsemble:
         start_time = time.time()
 
         for _, batch in enumerate(batch_iter(prefs_train.prefs,
-                                             batch_size=32,
+                                             batch_size=1,
                                              shuffle=True)):
             self.train_step(batch, prefs_train)
             self.n_steps += 1
@@ -256,7 +260,7 @@ class RewardPredictorEnsemble:
         self.train_writer.add_summary(summaries, self.n_steps)
 
     def val_step(self, prefs_val):
-        val_batch_size = 32
+        val_batch_size = 1
         if len(prefs_val) <= val_batch_size:
             batch = prefs_val.prefs
         else:

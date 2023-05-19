@@ -375,6 +375,8 @@ class Runner(object):
 
         # Run for nsteps steps in the environment
         for _ in range(self.nsteps):
+            #print("model step")
+
             actions, values, states = self.model.step(self.obs, self.states,
                                                       self.dones)
             #print("actions:=")
@@ -384,6 +386,7 @@ class Runner(object):
             mb_values.append(values)
             mb_dones.append(self.dones)
             # len({obs, rewards, dones}) == nenvs
+            #print("env step")
             obs, rewards, dones, _ = self.env.step(actions)
             self.states = states
             self.dones = dones
@@ -481,16 +484,19 @@ class Runner(object):
         # (Note that this also needs to be done _after_ we've encoded the
         # action.)
         logging.debug("Original rewards:\n%s", mb_rewards)
+        #print("Original rewards:\n%s", mb_rewards)
         if self.reward_predictor:
             assert_equal(mb_obs.shape, (nenvs, self.nsteps, 84, 84, 3*4))
             mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, 84, 84, 3*4)
 
             rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
+            #print("reward_predictor:\n%s", rewards_allenvs)
             assert_equal(rewards_allenvs.shape, (nenvs * self.nsteps, ))
             mb_rewards = rewards_allenvs.reshape(nenvs, self.nsteps)
             assert_equal(mb_rewards.shape, (nenvs, self.nsteps))
 
             logging.debug("Predicted rewards:\n%s", mb_rewards)
+            #print("Predicted rewards:\n%s", mb_rewards)
 
         # Save frames for episode rendering
         if self.episode_vid_queue is not None:
@@ -618,7 +624,9 @@ def learn(policy,
     # Before we're told to start training the policy itself,
     # just generate segments for the reward predictor to be trained with
     while True:
+        #print("!!!!!!!!!!!!!!!!!!!!!!!!!runner.run start!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         runner.run()
+        #print("!!!!!!!!!!!!!!!!!!!!!!!!!runner.run end!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         try:
             start_policy_training_pipe.get(block=False)
         except queue.Empty:
