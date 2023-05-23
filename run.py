@@ -8,7 +8,7 @@ import time
 from multiprocessing import Process, Queue
 
 import cloudpickle
-import easy_tf_log
+#import easy_tf_log
 from a2c import logger
 from a2c.a2c.a2c import learn
 from a2c.a2c.policies import CnnPolicy, MlpPolicy
@@ -21,7 +21,7 @@ from reward_predictor import RewardPredictorEnsemble
 from reward_predictor_core_network import net_cnn, net_moving_dot_features
 from utils import VideoRenderer, get_port_range, make_env
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # filter out INFO messages
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # filter out INFO messages
 
 
 def main():
@@ -159,15 +159,6 @@ def run(general_params,
     elif general_params['mode'] == 'train_policy_with_preferences':
         cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
         ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
-        env, a2c_proc = start_policy_training(
-            cluster_dict=cluster_dict,
-            make_reward_predictor=make_reward_predictor,
-            gen_segments=True,
-            start_policy_training_pipe=start_policy_training_flag,
-            seg_pipe=seg_pipe,
-            episode_vid_queue=episode_vid_queue,
-            log_dir=general_params['log_dir'],
-            a2c_params=a2c_params)
         pi, pi_proc = start_pref_interface(
             seg_pipe=seg_pipe,
             pref_pipe=pref_pipe,
@@ -187,13 +178,22 @@ def run(general_params,
             val_interval=rew_pred_training_params['val_interval'],
             ckpt_interval=rew_pred_training_params['ckpt_interval'],
             log_dir=general_params['log_dir'])
+        env, a2c_proc = start_policy_training(
+            cluster_dict=cluster_dict,
+            make_reward_predictor=make_reward_predictor,
+            gen_segments=True,
+            start_policy_training_pipe=start_policy_training_flag,
+            seg_pipe=seg_pipe,
+            episode_vid_queue=episode_vid_queue,
+            log_dir=general_params['log_dir'],
+            a2c_params=a2c_params)
         # We wait for A2C to complete the specified number of policy training
         # steps
-        a2c_proc.join()
-        rpt_proc.terminate()
+        rpt_proc.join()
+        a2c_proc.terminate()
+        ps_proc.terminate()
         pi_proc.terminate()
         pi.stop_renderer()
-        ps_proc.terminate()
         env.close()
     else:
         raise Exception("Unknown mode: {}".format(general_params['mode']))
@@ -288,7 +288,7 @@ def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
         else:
             reward_predictor = None
         misc_logs_dir = osp.join(log_dir, 'a2c_misc')
-        easy_tf_log.set_dir(misc_logs_dir)
+        #easy_tf_log.set_dir(misc_logs_dir)
         learn(
             policy=policy_fn,
             env=env,
@@ -340,6 +340,8 @@ def start_reward_predictor_training(cluster_dict,
     def f():
         rew_pred = make_reward_predictor('train', cluster_dict)
         rew_pred.init_network(load_ckpt_dir)
+
+        #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!reward predictor training start!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         if prefs_dir is not None:
             train_path = osp.join(prefs_dir, 'train.pkl.gz')
@@ -397,7 +399,9 @@ def start_reward_predictor_training(cluster_dict,
         while True:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
             save_prefs(log_dir, pref_db_train, pref_db_val)
+            #print("!!!!!!!!!!!!rew_pred.train!!!!!!!!!!!!")
             rew_pred.train(pref_db_train, pref_db_val, val_interval)
+            #print("rew_pred.train end")
             if i and i % ckpt_interval == 0:
                 rew_pred.save()
 

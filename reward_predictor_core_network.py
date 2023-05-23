@@ -3,7 +3,7 @@ Core network which predicts rewards from frames,
 for gym-moving-dot and Atari games.
 """
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from nn_layers import dense_layer, conv_layer
 

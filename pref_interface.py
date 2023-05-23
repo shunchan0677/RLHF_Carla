@@ -11,7 +11,7 @@ from itertools import combinations
 from multiprocessing import Queue
 from random import shuffle
 
-import easy_tf_log
+#import easy_tf_log
 import numpy as np
 
 from utils import VideoRenderer
@@ -33,7 +33,7 @@ class PrefInterface:
         self.segments = []
         self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
-        easy_tf_log.set_dir(log_dir)
+        #easy_tf_log.set_dir(log_dir)
 
     def stop_renderer(self):
         if self.renderer:
@@ -99,9 +99,9 @@ class PrefInterface:
                 self.segments[self.seg_idx] = segment
                 self.seg_idx = (self.seg_idx + 1) % self.max_segs
             n_recvd += 1
-        easy_tf_log.tflog('segment_idx', self.seg_idx)
-        easy_tf_log.tflog('n_segments_rcvd', n_recvd)
-        easy_tf_log.tflog('n_segments', len(self.segments))
+        #easy_tf_log.tflog('segment_idx', self.seg_idx)
+        #easy_tf_log.tflog('n_segments_rcvd', n_recvd)
+        #easy_tf_log.tflog('n_segments', len(self.segments))
 
     def sample_seg_pair(self):
         """

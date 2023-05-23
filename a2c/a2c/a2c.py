@@ -4,10 +4,11 @@ import queue
 import time
 
 import cloudpickle
-import easy_tf_log
+#import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 from a2c import logger
 from a2c.a2c.utils import (cat_entropy, discount_with_dones,
@@ -66,9 +67,9 @@ class Model(object):
         print("nbatch")
         print(nbatch)
 
-        A = tf.placeholder(tf.float32, [nbatch* 2], name="A")
-        ADV = tf.placeholder(tf.float32, [nbatch], name="B")
-        R = tf.placeholder(tf.float32, [nbatch], name="C")
+        A = tf.placeholder(tf.float32, [nbatch* 2])
+        ADV = tf.placeholder(tf.float32, [nbatch])
+        R = tf.placeholder(tf.float32, [nbatch])
         LR = tf.placeholder(tf.float32, [])
 
         #print("ob_space")
@@ -425,9 +426,9 @@ class Runner(object):
             for step_n in range(self.nsteps):
                 self.orig_reward[env_n] += rs[step_n]
                 if dones[step_n]:
-                    easy_tf_log.tflog(
-                        "orig_reward_{}".format(env_n),
-                        self.orig_reward[env_n])
+                    #easy_tf_log.tflog(
+                    #    "orig_reward_{}".format(env_n),
+                    #    self.orig_reward[env_n])
                     self.orig_reward[env_n] = 0
 
         if self.env.env_id == 'MovingDotNoFrameskip-v0':

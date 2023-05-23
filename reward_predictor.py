@@ -2,10 +2,10 @@ import logging
 import os.path as osp
 import time
 
-import easy_tf_log
+#import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from utils import RunningStat, batch_iter
 
@@ -26,6 +26,11 @@ class RewardPredictorEnsemble:
                  log_dir=None):
         self.n_preds = n_preds
         graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
+        self.cluster_job_name = cluster_job_name
+
+        print("!!!!!!!!!!!!!!!!!!!!!!!init!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print(cluster_dict)
+        print(self.cluster_job_name)
         # Why not just use soft device placement? With soft placement,
         # if we have a bug which prevents an operation being placed on the GPU
         # (e.g. we're using uint8s for operations that the GPU can't do),
@@ -43,6 +48,8 @@ class RewardPredictorEnsemble:
         self.rps = []
         with graph.as_default():
             for pred_n in range(n_preds):
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                print(pred_n)
                 with tf.device(device_setter):
                     with tf.variable_scope("pred_{}".format(pred_n)):
                         rp = RewardPredictorNetwork(
@@ -62,16 +69,16 @@ class RewardPredictorEnsemble:
         self.checkpoint_file = osp.join(log_dir,
                                         'reward_predictor_checkpoints',
                                         'reward_predictor.ckpt')
-        self.train_writer = tf.summary.FileWriter(
-            osp.join(log_dir, 'reward_predictor', 'train'), flush_secs=5)
-        self.test_writer = tf.summary.FileWriter(
-            osp.join(log_dir, 'reward_predictor', 'test'), flush_secs=5)
+        #self.train_writer = tf.summary.FileWriter(
+        #    osp.join(log_dir, 'reward_predictor', 'train'), flush_secs=5)
+        #self.test_writer = tf.summary.FileWriter(
+        #    osp.join(log_dir, 'reward_predictor', 'test'), flush_secs=5)
 
         self.n_steps = 0
         self.r_norm = RunningStat(shape=n_preds)
 
         misc_logs_dir = osp.join(log_dir, 'reward_predictor', 'misc')
-        easy_tf_log.set_dir(misc_logs_dir)
+        #easy_tf_log.set_dir(misc_logs_dir)
 
     @staticmethod
     def init_sess(cluster_dict, cluster_job_name):
@@ -161,7 +168,7 @@ class RewardPredictorEnsemble:
 
         ensemble_rs = self.raw_rewards(obs)
         logging.debug("Unnormalized rewards:\n%s", ensemble_rs)
-        print("Unnormalized rewards:\n%s", ensemble_rs)
+        #print("Unnormalized rewards:\n%s", ensemble_rs)
 
         # Normalize rewards
 
@@ -233,19 +240,29 @@ class RewardPredictorEnsemble:
         for _, batch in enumerate(batch_iter(prefs_train.prefs,
                                              batch_size=1,
                                              shuffle=True)):
+            print("!!!!!!!!!!!!!!!train step!!!!!!!!!!!!!!!!!!!")
+            print("!!!!!!!!!!!!!!!n_steps !!!!!!!!!!!!!!!!!!!")
+            print(self.n_steps)
+
+            print("!!!!!!!!!!!!!!!self.cluster_job_name !!!!!!!!!!!!!!!!!!!")
+            print(self.cluster_job_name)
             self.train_step(batch, prefs_train)
             self.n_steps += 1
 
+            #time.sleep(10.4)
+
             if self.n_steps and self.n_steps % val_interval == 0:
+                print("!!!!!!!!!!!!!!!val step!!!!!!!!!!!!!!!!!!!")
                 self.val_step(prefs_val)
 
         end_time = time.time()
         end_steps = self.n_steps
         rate = (end_steps - start_steps) / (end_time - start_time)
-        easy_tf_log.tflog('reward_predictor_training_steps_per_second',
-                          rate)
+        #easy_tf_log.tflog('reward_predictor_training_steps_per_second',
+        #                  rate)
 
     def train_step(self, batch, prefs_train):
+        print(batch)
         s1s = [prefs_train.segments[k1] for k1, k2, pref, in batch]
         s2s = [prefs_train.segments[k2] for k1, k2, pref, in batch]
         prefs = [pref for k1, k2, pref, in batch]
@@ -256,8 +273,17 @@ class RewardPredictorEnsemble:
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = True
         ops = [self.summaries, [rp.train for rp in self.rps]]
-        summaries, _ = self.sess.run(ops, feed_dict)
-        self.train_writer.add_summary(summaries, self.n_steps)
+
+        #print(feed_dict)
+        #print(ops)
+
+        #summaries, _ = self.sess.run(ops, feed_dict)
+        self.sess.run(self.rps[0].train, feed_dict)
+        #self.sess.close()
+        #print(summaries)
+        print("finish train_step!!!!!!!!!!!")
+        #self.train_writer.add_summary(summaries, self.n_steps)
+
 
     def val_step(self, prefs_val):
         val_batch_size = 1
@@ -278,7 +304,7 @@ class RewardPredictorEnsemble:
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = False
         summaries = self.sess.run(self.summaries, feed_dict)
-        self.test_writer.add_summary(summaries, self.n_steps)
+        #self.test_writer.add_summary(summaries, self.n_steps)
 
 
 class RewardPredictorNetwork:
