@@ -240,19 +240,19 @@ class RewardPredictorEnsemble:
         for _, batch in enumerate(batch_iter(prefs_train.prefs,
                                              batch_size=1,
                                              shuffle=True)):
-            print("!!!!!!!!!!!!!!!train step!!!!!!!!!!!!!!!!!!!")
-            print("!!!!!!!!!!!!!!!n_steps !!!!!!!!!!!!!!!!!!!")
-            print(self.n_steps)
+            #print("!!!!!!!!!!!!!!!train step!!!!!!!!!!!!!!!!!!!")
+            #print("!!!!!!!!!!!!!!!n_steps !!!!!!!!!!!!!!!!!!!")
+            #print(self.n_steps)
 
-            print("!!!!!!!!!!!!!!!self.cluster_job_name !!!!!!!!!!!!!!!!!!!")
-            print(self.cluster_job_name)
+            #print("!!!!!!!!!!!!!!!self.cluster_job_name !!!!!!!!!!!!!!!!!!!")
+            #print(self.cluster_job_name)
             self.train_step(batch, prefs_train)
             self.n_steps += 1
 
             #time.sleep(10.4)
 
             if self.n_steps and self.n_steps % val_interval == 0:
-                print("!!!!!!!!!!!!!!!val step!!!!!!!!!!!!!!!!!!!")
+                #print("!!!!!!!!!!!!!!!val step!!!!!!!!!!!!!!!!!!!")
                 self.val_step(prefs_val)
 
         end_time = time.time()
@@ -262,7 +262,7 @@ class RewardPredictorEnsemble:
         #                  rate)
 
     def train_step(self, batch, prefs_train):
-        print(batch)
+        #print(batch)
         s1s = [prefs_train.segments[k1] for k1, k2, pref, in batch]
         s2s = [prefs_train.segments[k2] for k1, k2, pref, in batch]
         prefs = [pref for k1, k2, pref, in batch]
@@ -281,7 +281,7 @@ class RewardPredictorEnsemble:
         self.sess.run(self.rps[0].train, feed_dict)
         #self.sess.close()
         #print(summaries)
-        print("finish train_step!!!!!!!!!!!")
+        #print("finish train_step!!!!!!!!!!!")
         #self.train_writer.add_summary(summaries, self.n_steps)
 
 
