@@ -134,9 +134,9 @@ class PrefInterface:
                                border,
                                s2.frames[t][:, :, -3:]))
             vid.append(frame)
-        n_pause_frames = 7
-        for _ in range(n_pause_frames):
-            vid.append(np.copy(vid[-1]))
+        #n_pause_frames = 7
+        #for _ in range(n_pause_frames):
+        #    vid.append(np.copy(vid[_]))
         print("vid.shape")
         print(len(vid))
         print(vid[0].shape)
@@ -146,20 +146,20 @@ class PrefInterface:
         while True:
             print("Segments {} and {}: ".format(s1.hash, s2.hash))
             choice = input()
-            # L = "I prefer the left segment"
-            # R = "I prefer the right segment"
-            # E = "I don't have a clear preference between the two segments"
+            # S = "I prefer the left segment"
+            # K = "I prefer the right segment"
+            # B = "I don't have a clear preference between the two segments"
             # "" = "The segments are incomparable"
-            if choice == "L" or choice == "R" or choice == "E" or choice == "":
+            if choice == "K" or choice == "S" or choice == "B" or choice == "":
                 break
             else:
                 print("Invalid choice '{}'".format(choice))
 
-        if choice == "L":
+        if choice == "K":
             pref = (1.0, 0.0)
-        elif choice == "R":
+        elif choice == "S":
             pref = (0.0, 1.0)
-        elif choice == "E":
+        elif choice == "B":
             pref = (0.5, 0.5)
         elif choice == "":
             pref = None

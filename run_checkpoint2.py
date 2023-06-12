@@ -160,7 +160,7 @@ def get_model(ckpt_dir):
         make_model = cloudpickle.loads(fh.read())
     print("Initialising policy...")
     model = make_model()
-    ckpt_file = "/media/user/805f81f1-eebc-4f25-942f-bba29fb6c676/berkeley_models/ppo/policy_checkpoints/policy.ckpt-60000" #tf.train.latest_checkpoint(ckpt_dir)
+    ckpt_file = "/media/user/805f81f1-eebc-4f25-942f-bba29fb6c676/berkeley_models/rlhf_human_batch1/policy_checkpoints/policy.ckpt-60000" #tf.train.latest_checkpoint(ckpt_dir)
     print("Loading checkpoint...")
     model.load(ckpt_file)
     return model
