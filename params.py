@@ -29,8 +29,7 @@ def parse_args():
         'max_prefs': args.max_prefs,
         'log_dir': log_dir,
         'prefs_dir': args.load_prefs_dir,
-        'debug': args.debug
-    }
+        'debug': args.debug   }
 
     num_timesteps = int(args.million_timesteps * 1e6)
     if args.lr_zero_million_timesteps is None:
@@ -48,7 +47,12 @@ def parse_args():
         'ckpt_load_dir': args.load_policy_ckpt_dir,
         'ckpt_save_interval': args.policy_ckpt_interval,
         'total_timesteps': num_timesteps,
-        'lr_scheduler': lr_scheduler
+        'lr_scheduler': lr_scheduler,
+        'root_dir': args.root_dir,
+        'experiment_name': args.experiment_name,
+        'gin_file': args.gin_file,
+        'gin_param': args.gin_param
+
     }
 
     pref_interface_args = {
@@ -139,6 +143,13 @@ def add_a2c_args(parser):
                         help='How many million timesteps to train for. '
                              '(The number of frames trained for is this '
                              'multiplied by 4 due to frameskip.)')
+    
+    parser.add_argument('--root_dir')
+    parser.add_argument('--experiment_name')
+    parser.add_argument('--gin_file')
+    parser.add_argument('--gin_param')
+    parser.add_argument('--load_carla_env.port')
+
 
 
 def add_reward_predictor_args(parser):
