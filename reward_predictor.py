@@ -135,7 +135,7 @@ class RewardPredictorEnsemble:
         Return (unnormalized) reward for each frame of a single segment
         from each member of the ensemble.
         """
-        assert_equal(obs.shape[1:], (84, 84, 3*4))
+        assert_equal(obs.shape[1:], (64, 64, 3*4))
         n_steps = obs.shape[0]
         feed_dict = {}
         for rp in self.rps:
@@ -161,7 +161,7 @@ class RewardPredictorEnsemble:
         ensemble members.)
         """
         #print("reward func")
-        assert_equal(obs.shape[1:], (84, 84, 3*4))
+        assert_equal(obs.shape[1:], (64, 64, 3*4))
         n_steps = obs.shape[0]
 
         # Get unnormalized rewards
@@ -268,13 +268,20 @@ class RewardPredictorEnsemble:
         prefs = [pref for k1, k2, pref, in batch]
         feed_dict = {}
         for rp in self.rps:
-            feed_dict[rp.s1] = s1s
-            feed_dict[rp.s2] = s2s
+            feed_dict[rp.s1] = s1s[0]
+            feed_dict[rp.s2] = s2s[0]
+            if(np.asarray(feed_dict[rp.s1]).shape != (25,1,64,64,12)):
+                feed_dict[rp.s1] = s1s[0][0]
+                feed_dict[rp.s2] = s2s[0][0]
+                print("reshape")
+                print(np.asarray(s1s).shape)
+
+
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = True
         ops = [self.summaries, [rp.train for rp in self.rps]]
 
-        #print(feed_dict)
+        print(feed_dict)
         #print(ops)
 
         #summaries, _ = self.sess.run(ops, feed_dict)
@@ -326,16 +333,16 @@ class RewardPredictorNetwork:
         training = tf.placeholder(tf.bool)
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
-        s1 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 3*4))
-        s2 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 3*4))
+        s1 = tf.placeholder(tf.float32, shape=(None, None, 64, 64, 3*4))
+        s2 = tf.placeholder(tf.float32, shape=(None, None, 64, 64, 3*4))
         # For each trajectory segment, there is one human judgement.
         pref = tf.placeholder(tf.float32, shape=(None, 2))
 
         # Concatenate trajectory segments so that the first dimension is just
         # frames
         # (necessary because of conv layer's requirements on input shape)
-        s1_unrolled = tf.reshape(s1, [-1, 84, 84, 3*4])
-        s2_unrolled = tf.reshape(s2, [-1, 84, 84, 3*4])
+        s1_unrolled = tf.reshape(s1, [-1, 64, 64, 3*4])
+        s2_unrolled = tf.reshape(s2, [-1, 64, 64, 3*4])
 
         # Predict rewards for each frame in the unrolled batch
         _r1 = core_network(

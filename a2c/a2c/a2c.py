@@ -392,13 +392,6 @@ class Runner(object):
             self.states = states
             self.dones = dones
 
-            #print("rewards")
-            #print(rewards)
-
-
-            #print("dones")
-            #print(dones)
-
             for n, done in enumerate(dones):
                 if done:
                     self.obs[n] = self.obs[n] * 0

@@ -12,6 +12,7 @@ from os import path as osp
 import sys
 import time
 from multiprocessing import Process, Queue
+from pref_db import Segment
 
 import cloudpickle
 #import easy_tf_log
@@ -78,6 +79,112 @@ flags.DEFINE_multi_string('gin_param', None, 'Gin binding to pass through.')
 
 FLAGS = flags.FLAGS
 
+class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
+  """Environment wrapper to filter observation channels."""
+
+  def __init__(self, gym_env, input_channels,reward_predictor,gen_segments = None,
+                 seg_pipe = None):
+    super(FilterObservationWrapperRewards, self).__init__(gym_env)
+    self.input_channels = input_channels
+
+    observation_spaces = collections.OrderedDict()
+    for channel in self.input_channels:
+      observation_spaces[channel] = self._env.observation_space[channel]
+    self.observation_space = gym.spaces.Dict(observation_spaces)
+    self.reward_predictor = reward_predictor
+
+    self.episode_vid_queue = None
+    self.gen_segments = gen_segments
+    self.segment = Segment()
+    self.seg_pipe = seg_pipe
+    self.nsteps = 1
+
+    if(self.reward_predictor):
+       print("reward_predictor")
+
+  def _modify_observation(self, observation):
+    observations = collections.OrderedDict()
+    for channel in self.input_channels:
+      observations[channel] = observation[channel]
+    return observations
+
+  def _step(self, action):
+    observation, reward, done, info = self._env.step(action)
+
+    if(self.reward_predictor):
+       nenvs = 1
+       nstack = 4
+       nsteps = self.nsteps
+       nh, nw, nc = observation["birdeye"].shape
+       obs =  np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
+       obs[:, :, :, -3:] = observation["birdeye"][:, :, :]
+       mb_obs = []
+       mb_obs.append(np.copy(obs))
+       mb_obs = np.asarray(mb_obs, dtype=np.uint8).swapaxes(1, 0)
+       mb_obs_allenvs = mb_obs.reshape(nenvs * nsteps, 64, 64, 3*4)
+
+       rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
+
+       #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
+       #mb_rewards = mb_rewards.flatten()
+       if self.gen_segments:
+            self.update_segment_buffer([mb_obs], [[reward]], [[done]])
+
+       # Save frames for episode rendering
+       #if self.episode_vid_queue is not None:
+       #     self.update_episode_frame_buffer(mb_obs, done)
+
+       reward = rewards_allenvs[0]
+
+
+
+    observation = self._modify_observation(observation)
+
+
+    return observation, reward, done, info
+
+  def _reset(self):
+    observation = self._env.reset()
+    return self._modify_observation(observation)
+  
+
+  def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
+        # Segments are only generated from the first worker.
+        # Empirically, this seems to work fine.
+        e0_obs = (mb_obs[0] * 255).astype(np.uint8)
+        e0_rew = mb_rewards[0]
+        e0_dones = mb_dones[0]
+
+        for step in range(self.nsteps):
+            self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
+            if len(self.segment) == 25 or e0_dones[step]:
+                while len(self.segment) < 25:
+                    # Pad to 25 steps long so that all segments in the batch
+                    # have the same length.
+                    # Note that the reward predictor needs the full frame
+                    # stack, so we send all frames.
+                    self.segment.append(e0_obs[step], 0)
+                self.segment.finalise()
+                try:
+                    self.seg_pipe.put(self.segment, block=False)
+                except queue.Full:
+                    # If the preference interface has a backlog of segments
+                    # to deal with, don't stop training the agents. Just drop
+                    # the segment and keep on going.
+                    pass
+                self.segment = Segment()
+
+  def update_episode_frame_buffer(self, mb_obs, mb_dones):
+        e0_obs = (mb_obs[0] * 255).astype(np.uint8)
+        e0_dones = mb_dones[0]
+        for step in range(self.nsteps):
+            # Here we only need to send the last frame (the most recent one)
+            # from the 4-frame stack, because we're just showing output to
+            # the user.
+            self.episode_frames.append(e0_obs[step, :, :, -3:])
+            if e0_dones[step]:
+                self.episode_vid_queue.put(self.episode_frames)
+                self.episode_frames = []
 
 
 @gin.configurable
@@ -110,7 +217,11 @@ def load_carla_env(
   pixor_size=64,
   pixor=False,
   obs_channels=None,
-  action_repeat=1):
+  action_repeat=1,
+  reward_predictor=None,
+  gen_segments=None,
+  seg_pipe=None
+  ):
   """Loads train and eval environments."""
   env_params = {
     'number_of_vehicles': number_of_vehicles,
@@ -144,7 +255,7 @@ def load_carla_env(
   gym_env = gym_spec.make(params=env_params)
 
   if obs_channels:
-    gym_env = filter_observation_wrapper.FilterObservationWrapper(gym_env, obs_channels)
+    gym_env = FilterObservationWrapperRewards(gym_env, obs_channels,reward_predictor,gen_segments,seg_pipe)
 
   py_env = gym_wrapper.GymWrapper(
     gym_env,
@@ -913,12 +1024,15 @@ def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
     os.makedirs(ckpt_dir)
     print(a2c_params['gin_file'], a2c_params['gin_param'])
 
-    def f():
-        py_env, eval_py_env = load_carla_env(env_name='carla-v0', obs_channels=input_names+mask_names, action_repeat=action_repeat)
+    def f(gen_segments, seg_pipe):
         if make_reward_predictor:
             reward_predictor = make_reward_predictor('a2c', cluster_dict)
+
         else:
             reward_predictor = None
+            gen_segments = None
+            seg_pipe = None
+        py_env, eval_py_env = load_carla_env(env_name='carla-v0', obs_channels=input_names+mask_names, action_repeat=action_repeat,reward_predictor=reward_predictor,seg_pipe=seg_pipe,gen_segments=gen_segments)
 
         logging.set_verbosity(logging.INFO)
         gin.parse_config_file("params.gin") #a2c_params['gin_file'], a2c_params['gin_param'])
@@ -935,7 +1049,7 @@ def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
             gen_segments=gen_segments)#a2c_params['root_dir'], a2c_params['experiment_name'])
 
 
-    proc = Process(target=f, daemon=True)
+    proc = Process(target=f, daemon=True, args=(gen_segments,seg_pipe))
     proc.start()
     return env, proc
 

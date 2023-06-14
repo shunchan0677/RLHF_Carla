@@ -6,8 +6,8 @@ train_eval.model_network_ctor_type = 'hierarchical'
 
 train_eval.initial_model_train_steps = 0
 train_eval.num_iterations = 3000000
-train_eval.batch_size = 1
-train_eval.model_batch_size = 1
+train_eval.batch_size = 128
+train_eval.model_batch_size = 16
 train_eval.sequence_length = 10
 
 train_eval.num_eval_episodes = 2
