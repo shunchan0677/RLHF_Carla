@@ -5,6 +5,7 @@ for gym-moving-dot and Atari games.
 
 import tensorflow.compat.v1 as tf
 
+tf.disable_v2_behavior()
 from nn_layers import dense_layer, conv_layer
 
 

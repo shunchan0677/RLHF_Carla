@@ -7,6 +7,9 @@ import numpy as np
 from numpy.testing import assert_equal
 import tensorflow.compat.v1 as tf
 
+#tf.enable_v2_behavior()
+tf.disable_v2_behavior()
+
 from utils import RunningStat, batch_iter
 
 
@@ -125,6 +128,8 @@ class RewardPredictorEnsemble:
             self.sess.run(self.init_op)
 
     def save(self):
+
+        tf.disable_v2_behavior()
         ckpt_name = self.saver.save(self.sess,
                                     self.checkpoint_file,
                                     self.n_steps)
@@ -268,14 +273,18 @@ class RewardPredictorEnsemble:
         prefs = [pref for k1, k2, pref, in batch]
         feed_dict = {}
         for rp in self.rps:
+            #print(np.asarray(s1s).shape)
+            #print(np.asarray(s2s).shape)
             feed_dict[rp.s1] = s1s[0]
             feed_dict[rp.s2] = s2s[0]
-            print(np.asarray(s1s).shape)
+            #print(np.asarray(feed_dict[rp.s1]).shape)
+            #print(np.asarray(feed_dict[rp.s2]).shape)
             if(np.asarray(feed_dict[rp.s1]).shape != (25,1,64,64,12)):
                 feed_dict[rp.s1] = s1s[0][0]
                 feed_dict[rp.s2] = s2s[0][0]
-                print("reshape")
-                print(np.asarray(s1s).shape)
+                #print("reshape")
+                #print(np.asarray(s1s).shape)
+                #print(np.asarray(s2s).shape)
 
 
             feed_dict[rp.pref] = prefs
@@ -307,8 +316,8 @@ class RewardPredictorEnsemble:
         prefs = [pref for k1, k2, pref, in batch]
         feed_dict = {}
         for rp in self.rps:
-            feed_dict[rp.s1] = s1s
-            feed_dict[rp.s2] = s2s
+            feed_dict[rp.s1] = s1s[0]
+            feed_dict[rp.s2] = s2s[0]
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = False
         summaries = self.sess.run(self.summaries, feed_dict)

@@ -1,37 +1,10 @@
-#!/usr/bin/env python3
-
+# Copyright (c) 2020: Jianyu Chen (jianyuchen@berkeley.edu).
+#
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT>.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-
-
-import logging
-import os
-from os import path as osp
-import sys
-import time
-from multiprocessing import Process, Queue
-from pref_db import Segment
-
-import queue
-
-import cloudpickle
-#import easy_tf_log
-from a2c import logger
-from a2c.a2c.a2c import learn
-from a2c.a2c.policies import CnnPolicy, MlpPolicy
-from a2c.common import set_global_seeds
-from a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
-from params import parse_args, PREFS_VAL_FRACTION
-from pref_db import PrefDB, PrefBuffer
-from pref_interface import PrefInterface
-from reward_predictor import RewardPredictorEnsemble
-from reward_predictor_core_network import net_cnn, net_moving_dot_features
-from utils import VideoRenderer, get_port_range, make_env
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'  # filter out INFO messages
-
 
 from absl import app
 from absl import flags
@@ -42,7 +15,8 @@ import gin
 import numpy as np
 import os
 import tensorflow as tf
-tf.compat.v1.enable_v2_behavior()
+
+tf.enable_v2_behavior()
 import time
 import collections
 
@@ -81,112 +55,6 @@ flags.DEFINE_multi_string('gin_param', None, 'Gin binding to pass through.')
 
 FLAGS = flags.FLAGS
 
-class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
-  """Environment wrapper to filter observation channels."""
-
-  def __init__(self, gym_env, input_channels,reward_predictor,gen_segments = None,
-                 seg_pipe = None):
-    super(FilterObservationWrapperRewards, self).__init__(gym_env)
-    self.input_channels = input_channels
-
-    observation_spaces = collections.OrderedDict()
-    for channel in self.input_channels:
-      observation_spaces[channel] = self._env.observation_space[channel]
-    self.observation_space = gym.spaces.Dict(observation_spaces)
-    self.reward_predictor = reward_predictor
-
-    self.episode_vid_queue = None
-    self.gen_segments = gen_segments
-    self.segment = Segment()
-    self.seg_pipe = seg_pipe
-    self.nsteps = 1
-
-    if(self.reward_predictor):
-       print("reward_predictor")
-
-  def _modify_observation(self, observation):
-    observations = collections.OrderedDict()
-    for channel in self.input_channels:
-      observations[channel] = observation[channel]
-    return observations
-
-  def _step(self, action):
-    observation, reward, done, info = self._env.step(action)
-
-    if(self.reward_predictor):
-       nenvs = 1
-       nstack = 4
-       nsteps = self.nsteps
-       nh, nw, nc = observation["birdeye"].shape
-       obs =  np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
-       obs[:, :, :, -3:] = observation["birdeye"][:, :, :]
-       mb_obs = []
-       mb_obs.append(np.copy(obs))
-       mb_obs = np.asarray(mb_obs, dtype=np.uint8).swapaxes(1, 0)
-       mb_obs_allenvs = mb_obs.reshape(nenvs * nsteps, 64, 64, 3*4)
-
-       rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
-
-       #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
-       #mb_rewards = mb_rewards.flatten()
-       if self.gen_segments:
-            self.update_segment_buffer([mb_obs], [[reward]], [[done]])
-
-       # Save frames for episode rendering
-       #if self.episode_vid_queue is not None:
-       #     self.update_episode_frame_buffer(mb_obs, done)
-
-       reward = rewards_allenvs[0]
-
-
-
-    observation = self._modify_observation(observation)
-
-
-    return observation, reward, done, info
-
-  def _reset(self):
-    observation = self._env.reset()
-    return self._modify_observation(observation)
-  
-
-  def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
-        # Segments are only generated from the first worker.
-        # Empirically, this seems to work fine.
-        e0_obs = (mb_obs[0] * 255).astype(np.uint8)
-        e0_rew = mb_rewards[0]
-        e0_dones = mb_dones[0]
-
-        for step in range(self.nsteps):
-            self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
-            if len(self.segment) == 25 or e0_dones[step]:
-                while len(self.segment) < 25:
-                    # Pad to 25 steps long so that all segments in the batch
-                    # have the same length.
-                    # Note that the reward predictor needs the full frame
-                    # stack, so we send all frames.
-                    self.segment.append(e0_obs[step], 0)
-                self.segment.finalise()
-                try:
-                    self.seg_pipe.put(self.segment, block=False)
-                except queue.Full:
-                    # If the preference interface has a backlog of segments
-                    # to deal with, don't stop training the agents. Just drop
-                    # the segment and keep on going.
-                    pass
-                self.segment = Segment()
-
-  def update_episode_frame_buffer(self, mb_obs, mb_dones):
-        e0_obs = (mb_obs[0] * 255).astype(np.uint8)
-        e0_dones = mb_dones[0]
-        for step in range(self.nsteps):
-            # Here we only need to send the last frame (the most recent one)
-            # from the 4-frame stack, because we're just showing output to
-            # the user.
-            self.episode_frames.append(e0_obs[step, :, :, -3:])
-            if e0_dones[step]:
-                self.episode_vid_queue.put(self.episode_frames)
-                self.episode_frames = []
 
 
 @gin.configurable
@@ -219,11 +87,7 @@ def load_carla_env(
   pixor_size=64,
   pixor=False,
   obs_channels=None,
-  action_repeat=1,
-  reward_predictor=None,
-  gen_segments=None,
-  seg_pipe=None
-  ):
+  action_repeat=1):
   """Loads train and eval environments."""
   env_params = {
     'number_of_vehicles': number_of_vehicles,
@@ -257,8 +121,7 @@ def load_carla_env(
   gym_env = gym_spec.make(params=env_params)
 
   if obs_channels:
-    gym_env = FilterObservationWrapperRewards(gym_env, obs_channels,reward_predictor,gen_segments,seg_pipe)
-    gym_env_eval = FilterObservationWrapperRewards(gym_env, obs_channels,None,None,None)
+    gym_env = filter_observation_wrapper.FilterObservationWrapper(gym_env, obs_channels)
 
   py_env = gym_wrapper.GymWrapper(
     gym_env,
@@ -266,12 +129,7 @@ def load_carla_env(
     auto_reset=True,
   )
 
-  eval_py_env = gym_wrapper.GymWrapper(
-    gym_env_eval,
-    discount=discount,
-    auto_reset=True,
-  )
-
+  eval_py_env = py_env
 
   if action_repeat > 1:
     py_env = wrappers.ActionRepeat(py_env, action_repeat)
@@ -448,6 +306,18 @@ def train_eval(
     model_network_ctor_type='non-hierarchical',  # model net
     input_names=['camera', 'lidar'],  # names for inputs
     mask_names=['birdeye'],  # names for masks
+    preprocessing_combiner=tf.keras.layers.Add(),  # takes a flat list of tensors and combines them
+    actor_lstm_size=(40,),  # lstm size for actor
+    critic_lstm_size=(40,),  # lstm size for critic
+    actor_output_fc_layers=(100,),  # lstm output
+    critic_output_fc_layers=(100,),  # lstm output
+    epsilon_greedy=0.1,  # exploration parameter for DQN
+    q_learning_rate=1e-3,  # q learning rate for DQN
+    ou_stddev=0.2,  # exploration paprameter for DDPG
+    ou_damping=0.15,  # exploration parameter for DDPG
+    dqda_clipping=None,  # for DDPG
+    exploration_noise_std=0.1,  # exploration paramter for td3
+    actor_update_period=2,  # for td3
     # Params for collect
     initial_collect_steps=1000,
     collect_steps_per_iteration=1,
@@ -484,15 +354,7 @@ def train_eval(
     summarize_grads_and_vars=False,
     gpu_allow_growth=True,  # GPU memory growth
     gpu_memory_limit=None,  # GPU memory limit
-    action_repeat=1,
-    py_env=None, 
-    eval_py_env=None,
-    seg_pipe=None,
-    start_policy_training_pipe=None,
-    episode_vid_queue=None,
-    reward_predictor=None,
-    ckpt_save_dir=None,
-    gen_segments=None):  # Name of single observation channel, ['camera', 'lidar', 'birdeye']
+    action_repeat=1):  # Name of single observation channel, ['camera', 'lidar', 'birdeye']
   # Setup GPU
   gpus = tf.config.experimental.list_physical_devices('GPU')
   if gpu_allow_growth:
@@ -529,9 +391,8 @@ def train_eval(
   with tf.summary.record_if(
       lambda: tf.math.equal(global_step % summary_interval, 0)):
     # Create Carla environment
-    #if agent_name == 'latent_sac':
-
-    
+    if agent_name == 'latent_sac':
+      py_env, eval_py_env = load_carla_env(env_name='carla-v0', obs_channels=input_names+mask_names, action_repeat=action_repeat)
     tf_env = tf_py_environment.TFPyEnvironment(py_env)
     eval_tf_env = tf_py_environment.TFPyEnvironment(eval_py_env)
     fps = int(np.round(1.0 / (py_env.dt * action_repeat)))
@@ -775,407 +636,14 @@ def train_eval(
         rb_checkpointer.save(global_step=global_step_val)
 
 
-def main():
-    general_params, a2c_params, \
-        pref_interface_params, rew_pred_training_params = parse_args()
-
-    if general_params['debug']:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    run(general_params,
-        a2c_params,
-        pref_interface_params,
-        rew_pred_training_params)
-
-
-def run(general_params,
-        a2c_params,
-        pref_interface_params,
-        rew_pred_training_params):
-    seg_pipe = Queue(maxsize=1)
-    pref_pipe = Queue(maxsize=1)
-    start_policy_training_flag = Queue(maxsize=1)
-
-    if general_params['render_episodes']:
-        episode_vid_queue, episode_renderer = start_episode_renderer()
-    else:
-        episode_vid_queue = episode_renderer = None
-
-    if a2c_params['env_id'] in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-        reward_predictor_network = net_moving_dot_features
-    elif a2c_params['env_id'] in ['PongNoFrameskip-v4', 'EnduroNoFrameskip-v4', 'CarRacing-v2','carla-v0']:
-        reward_predictor_network = net_cnn
-    else:
-        raise Exception("Unsure about reward predictor network for {}".format(
-            a2c_params['env_id']))
-
-    def make_reward_predictor(name, cluster_dict):
-        return RewardPredictorEnsemble(
-            cluster_job_name=name,
-            cluster_dict=cluster_dict,
-            log_dir=general_params['log_dir'],
-            batchnorm=rew_pred_training_params['batchnorm'],
-            dropout=rew_pred_training_params['dropout'],
-            lr=rew_pred_training_params['lr'],
-            core_network=reward_predictor_network)
-
-    save_make_reward_predictor(general_params['log_dir'],
-                               make_reward_predictor)
-
-    if general_params['mode'] == 'gather_initial_prefs':
-        env, a2c_proc = start_policy_training(
-            cluster_dict=None,
-            make_reward_predictor=None,
-            gen_segments=True,
-            start_policy_training_pipe=start_policy_training_flag,
-            seg_pipe=seg_pipe,
-            episode_vid_queue=episode_vid_queue,
-            log_dir=general_params['log_dir'],
-            a2c_params=a2c_params)
-        pi, pi_proc = start_pref_interface(
-            seg_pipe=seg_pipe,
-            pref_pipe=pref_pipe,
-            log_dir=general_params['log_dir'],
-            **pref_interface_params)
-
-        n_train = general_params['max_prefs'] * (1 - PREFS_VAL_FRACTION)
-        n_val = general_params['max_prefs'] * PREFS_VAL_FRACTION
-        pref_db_train = PrefDB(maxlen=n_train)
-        pref_db_val = PrefDB(maxlen=n_val)
-        pref_buffer = PrefBuffer(db_train=pref_db_train, db_val=pref_db_val)
-        pref_buffer.start_recv_thread(pref_pipe)
-        pref_buffer.wait_until_len(general_params['n_initial_prefs'])
-        pref_db_train, pref_db_val = pref_buffer.get_dbs()
-
-        save_prefs(general_params['log_dir'], pref_db_train, pref_db_val)
-
-        pi_proc.terminate()
-        pi.stop_renderer()
-        a2c_proc.terminate()
-        pref_buffer.stop_recv_thread()
-
-        env.close()
-    elif general_params['mode'] == 'pretrain_reward_predictor':
-        cluster_dict = create_cluster_dict(['ps', 'train'])
-        ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
-        rpt_proc = start_reward_predictor_training(
-            cluster_dict=cluster_dict,
-            make_reward_predictor=make_reward_predictor,
-            just_pretrain=True,
-            pref_pipe=pref_pipe,
-            start_policy_training_pipe=start_policy_training_flag,
-            max_prefs=general_params['max_prefs'],
-            prefs_dir=general_params['prefs_dir'],
-            load_ckpt_dir=None,
-            n_initial_prefs=general_params['n_initial_prefs'],
-            n_initial_epochs=rew_pred_training_params['n_initial_epochs'],
-            val_interval=rew_pred_training_params['val_interval'],
-            ckpt_interval=rew_pred_training_params['ckpt_interval'],
-            log_dir=general_params['log_dir'])
-        rpt_proc.join()
-        ps_proc.terminate()
-    elif general_params['mode'] == 'train_policy_with_original_rewards':
-        env, a2c_proc = start_policy_training(
-            cluster_dict=None,
-            make_reward_predictor=None,
-            gen_segments=False,
-            start_policy_training_pipe=start_policy_training_flag,
-            seg_pipe=seg_pipe,
-            episode_vid_queue=episode_vid_queue,
-            log_dir=general_params['log_dir'],
-            a2c_params=a2c_params)
-        start_policy_training_flag.put(True)
-        a2c_proc.join()
-        env.close()
-
-    elif general_params['mode'] == 'train_policy_with_pretrained_predictor':
-
-        cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
-        #print("!!!!!load param!!!!!!!!!!!!")
-        ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
-        #print("!!!!!start policy training!!!!!!!!!!!!")
-        env, a2c_proc = start_policy_training(
-            cluster_dict=cluster_dict,
-            make_reward_predictor=make_reward_predictor,
-            gen_segments=True,
-            start_policy_training_pipe=start_policy_training_flag,
-            seg_pipe=seg_pipe,
-            episode_vid_queue=episode_vid_queue,
-            log_dir=general_params['log_dir'],
-            a2c_params=a2c_params)
-        a2c_proc.join()
-        ps_proc.terminate()
-        env.close()
-
-    elif general_params['mode'] == 'train_policy_with_preferences':
-        cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
-        ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
-        pi, pi_proc = start_pref_interface(
-            seg_pipe=seg_pipe,
-            pref_pipe=pref_pipe,
-            log_dir=general_params['log_dir'],
-            **pref_interface_params)
-        rpt_proc = start_reward_predictor_training(
-            cluster_dict=cluster_dict,
-            make_reward_predictor=make_reward_predictor,
-            just_pretrain=False,
-            pref_pipe=pref_pipe,
-            start_policy_training_pipe=start_policy_training_flag,
-            max_prefs=general_params['max_prefs'],
-            prefs_dir=general_params['prefs_dir'],
-            load_ckpt_dir=rew_pred_training_params['load_ckpt_dir'],
-            n_initial_prefs=general_params['n_initial_prefs'],
-            n_initial_epochs=rew_pred_training_params['n_initial_epochs'],
-            val_interval=rew_pred_training_params['val_interval'],
-            ckpt_interval=rew_pred_training_params['ckpt_interval'],
-            log_dir=general_params['log_dir'])
-        env, a2c_proc = start_policy_training(
-            cluster_dict=cluster_dict,
-            make_reward_predictor=make_reward_predictor,
-            gen_segments=True,
-            start_policy_training_pipe=start_policy_training_flag,
-            seg_pipe=seg_pipe,
-            episode_vid_queue=episode_vid_queue,
-            log_dir=general_params['log_dir'],
-            a2c_params=a2c_params)
-        # We wait for A2C to complete the specified number of policy training
-        # steps
-        rpt_proc.join()
-        a2c_proc.terminate()
-        ps_proc.terminate()
-        pi_proc.terminate()
-        pi.stop_renderer()
-        env.close()
-    else:
-        raise Exception("Unknown mode: {}".format(general_params['mode']))
-
-    if episode_renderer:
-        episode_renderer.stop()
-
-
-def save_prefs(log_dir, pref_db_train, pref_db_val):
-    train_path = osp.join(log_dir, 'train.pkl.gz')
-    pref_db_train.save(train_path)
-    print("Saved training preferences to '{}'".format(train_path))
-    val_path = osp.join(log_dir, 'val.pkl.gz')
-    pref_db_val.save(val_path)
-    print("Saved validation preferences to '{}'".format(val_path))
-
-
-def save_make_reward_predictor(log_dir, make_reward_predictor):
-    save_dir = osp.join(log_dir, 'reward_predictor_checkpoints')
-    os.makedirs(save_dir, exist_ok=True)
-    with open(osp.join(save_dir, 'make_reward_predictor.pkl'), 'wb') as fh:
-        fh.write(cloudpickle.dumps(make_reward_predictor))
-
-
-def create_cluster_dict(jobs):
-    n_ports = len(jobs) + 1
-    ports = get_port_range(start_port=2200,
-                           n_ports=n_ports,
-                           random_stagger=True)
-    cluster_dict = {}
-    for part, port in zip(jobs, ports):
-        cluster_dict[part] = ['localhost:{}'.format(port)]
-    return cluster_dict
-
-
-def configure_a2c_logger(log_dir):
-    a2c_dir = osp.join(log_dir, 'a2c')
-    os.makedirs(a2c_dir)
-    tb = logger.TensorBoardOutputFormat(a2c_dir)
-    logger.Logger.CURRENT = logger.Logger(dir=a2c_dir, output_formats=[tb])
-
-
-def make_envs(env_id, n_envs, seed):
-    def wrap_make_env(env_id, rank):
-        def _thunk():
-            return make_env(env_id, seed + rank)
-        return _thunk
-    set_global_seeds(seed)
-    env = SubprocVecEnv(env_id, [wrap_make_env(env_id, i)
-                                 for i in range(n_envs)])
-    return env
-
-
-
-
-def start_parameter_server(cluster_dict, make_reward_predictor):
-    def f():
-        make_reward_predictor('ps', cluster_dict)
-        while True:
-            time.sleep(1.0)
-
-    proc = Process(target=f, daemon=True)
-    proc.start()
-    return proc
-
-
-def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
-                          start_policy_training_pipe, seg_pipe,
-                          episode_vid_queue, log_dir, a2c_params):
-    env_id = a2c_params['env_id']
-
-
-    # Done here because daemonic processes can't have children
-    env = make_envs(a2c_params['env_id'],
-                    a2c_params['n_envs'],
-                   a2c_params['seed'])
-    
-    mask_names = ['birdeye']
-    input_names = ['camera', 'lidar']
-    action_repeat = 4
-    
-    del a2c_params['env_id'], a2c_params['n_envs']
-
-    ckpt_dir = osp.join(log_dir, 'policy_checkpoints')
-    os.makedirs(ckpt_dir)
-    print(a2c_params['gin_file'], a2c_params['gin_param'])
-
-    def f(gen_segments, seg_pipe):
-        if make_reward_predictor:
-            reward_predictor = make_reward_predictor('a2c', cluster_dict)
-
-        else:
-            reward_predictor = None
-            gen_segments = None
-            seg_pipe = None
-        py_env, eval_py_env = load_carla_env(env_name='carla-v0', obs_channels=input_names+mask_names, action_repeat=action_repeat,reward_predictor=reward_predictor,seg_pipe=seg_pipe,gen_segments=gen_segments)
-
-        logging.set_verbosity(logging.INFO)
-        gin.parse_config_file("params.gin") #a2c_params['gin_file'], a2c_params['gin_param'])
-
-        train_eval("logs",
-            "latent_sac",
-            py_env=py_env, 
-            eval_py_env=eval_py_env, 
-            seg_pipe=seg_pipe,
-            start_policy_training_pipe=start_policy_training_pipe,
-            episode_vid_queue=episode_vid_queue,
-            reward_predictor=reward_predictor,
-            ckpt_save_dir=ckpt_dir,
-            gen_segments=gen_segments)#a2c_params['root_dir'], a2c_params['experiment_name'])
-
-
-    proc = Process(target=f, daemon=True, args=(gen_segments,seg_pipe))
-    proc.start()
-    return env, proc
-
-
-def start_pref_interface(seg_pipe, pref_pipe, max_segs, synthetic_prefs,
-                         log_dir):
-    def f():
-        # The preference interface needs to get input from stdin. stdin is
-        # automatically closed at the beginning of child processes in Python,
-        # so this is a bit of a hack, but it seems to be fine.
-        sys.stdin = os.fdopen(0)
-        pi.run(seg_pipe=seg_pipe, pref_pipe=pref_pipe)
-
-    # Needs to be done in the main process because does GUI setup work
-    prefs_log_dir = osp.join(log_dir, 'pref_interface')
-    pi = PrefInterface(synthetic_prefs=synthetic_prefs,
-                       max_segs=max_segs,
-                       log_dir=prefs_log_dir)
-    proc = Process(target=f, daemon=True)
-    proc.start()
-    return pi, proc
-
-
-def start_reward_predictor_training(cluster_dict,
-                                    make_reward_predictor,
-                                    just_pretrain,
-                                    pref_pipe,
-                                    start_policy_training_pipe,
-                                    max_prefs,
-                                    n_initial_prefs,
-                                    n_initial_epochs,
-                                    prefs_dir,
-                                    load_ckpt_dir,
-                                    val_interval,
-                                    ckpt_interval,
-                                    log_dir):
-    def f():
-        rew_pred = make_reward_predictor('train', cluster_dict)
-        rew_pred.init_network(load_ckpt_dir)
-
-        #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!reward predictor training start!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-        if prefs_dir is not None:
-            train_path = osp.join(prefs_dir, 'train.pkl.gz')
-            pref_db_train = PrefDB.load(train_path)
-            print("Loaded training preferences from '{}'".format(train_path))
-            n_prefs, n_segs = len(pref_db_train), len(pref_db_train.segments)
-            print("({} preferences, {} segments)".format(n_prefs, n_segs))
-
-            val_path = osp.join(prefs_dir, 'val.pkl.gz')
-            pref_db_val = PrefDB.load(val_path)
-            print("Loaded validation preferences from '{}'".format(val_path))
-            n_prefs, n_segs = len(pref_db_val), len(pref_db_val.segments)
-            print("({} preferences, {} segments)".format(n_prefs, n_segs))
-        else:
-            n_train = max_prefs * (1 - PREFS_VAL_FRACTION)
-            n_val = max_prefs * PREFS_VAL_FRACTION
-            pref_db_train = PrefDB(maxlen=n_train)
-            pref_db_val = PrefDB(maxlen=n_val)
-
-        pref_buffer = PrefBuffer(db_train=pref_db_train,
-                                 db_val=pref_db_val)
-        pref_buffer.start_recv_thread(pref_pipe)
-        if prefs_dir is None:
-            pref_buffer.wait_until_len(n_initial_prefs)
-
-        save_prefs(log_dir, pref_db_train, pref_db_val)
-
-
-        if not load_ckpt_dir:
-            print("Pretraining reward predictor for {} epochs".format(
-                n_initial_epochs))
-            pref_db_train, pref_db_val = pref_buffer.get_dbs()
-            for i in range(n_initial_epochs):
-                # Note that we deliberately don't update the preferences
-                # databases during pretraining to keep the number of
-                # fairly preferences small so that pretraining doesn't take too
-                # long.
-                print("Reward predictor training epoch {}".format(i))
-
-                #print("!!!!!!!!!!!!!!!!!!!!!!test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                rew_pred.train(pref_db_train, pref_db_val, val_interval)
-
-                #print("!!!!!!!!!!!!!!!!!!!!!!test2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                if i and i % ckpt_interval == 0:
-                    rew_pred.save()
-            print("Reward predictor pretraining done")
-            rew_pred.save()
-
-        if just_pretrain:
-            return
-
-        start_policy_training_pipe.put(True)
-        
-        i = 0
-        while True:
-            pref_db_train, pref_db_val = pref_buffer.get_dbs()
-            save_prefs(log_dir, pref_db_train, pref_db_val)
-            #print("!!!!!!!!!!!!rew_pred.train!!!!!!!!!!!!")
-            rew_pred.train(pref_db_train, pref_db_val, val_interval)
-            #print("rew_pred.train end")
-            if i and i % ckpt_interval == 0:
-                rew_pred.save()
-
-    proc = Process(target=f, daemon=True)
-    proc.start()
-    return proc
-
-
-def start_episode_renderer():
-    episode_vid_queue = Queue()
-    renderer = VideoRenderer(
-        episode_vid_queue,
-        playback_speed=8,
-        zoom=1,
-        mode=VideoRenderer.play_through_mode)
-    return episode_vid_queue, renderer
+def main(_):
+  tf.compat.v1.enable_v2_behavior()
+  logging.set_verbosity(logging.INFO)
+  gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
+  train_eval(FLAGS.root_dir, FLAGS.experiment_name)
 
 
 if __name__ == '__main__':
-    main()
+  flags.mark_flag_as_required('root_dir')
+  flags.mark_flag_as_required('experiment_name')
+  app.run(main)

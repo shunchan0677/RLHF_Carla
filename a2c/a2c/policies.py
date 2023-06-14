@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+tf.enable_v2_behavior()
 
 from a2c.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm, sample
 

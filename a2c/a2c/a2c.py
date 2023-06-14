@@ -8,7 +8,8 @@ import cloudpickle
 import numpy as np
 from numpy.testing import assert_equal
 import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+#tf.disable_v2_behavior()
+tf.enable_v2_behavior()
 
 from a2c import logger
 from a2c.a2c.utils import (cat_entropy, discount_with_dones,
