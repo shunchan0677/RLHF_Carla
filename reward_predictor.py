@@ -270,6 +270,7 @@ class RewardPredictorEnsemble:
         for rp in self.rps:
             feed_dict[rp.s1] = s1s[0]
             feed_dict[rp.s2] = s2s[0]
+            print(np.asarray(s1s).shape)
             if(np.asarray(feed_dict[rp.s1]).shape != (25,1,64,64,12)):
                 feed_dict[rp.s1] = s1s[0][0]
                 feed_dict[rp.s2] = s2s[0][0]
@@ -281,7 +282,7 @@ class RewardPredictorEnsemble:
             feed_dict[rp.training] = True
         ops = [self.summaries, [rp.train for rp in self.rps]]
 
-        print(feed_dict)
+        #print(feed_dict)
         #print(ops)
 
         #summaries, _ = self.sess.run(ops, feed_dict)
