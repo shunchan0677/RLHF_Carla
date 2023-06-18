@@ -125,7 +125,7 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
        mb_obs = np.asarray(mb_obs, dtype=np.uint8).swapaxes(1, 0)
        mb_obs_allenvs = mb_obs.reshape(nenvs * nsteps, 64, 64, 3*4)
 
-       rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
+       rewards_allenvs = self.reward_predictor.raw_rewards(mb_obs_allenvs)[0]
 
        #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
        #mb_rewards = mb_rewards.flatten()
@@ -258,7 +258,7 @@ def load_carla_env(
 
   if obs_channels:
     gym_env = FilterObservationWrapperRewards(gym_env, obs_channels,reward_predictor,gen_segments,seg_pipe)
-    gym_env_eval = FilterObservationWrapperRewards(gym_env, obs_channels,None,None,None)
+    #gym_env_eval = FilterObservationWrapperRewards(gym_env, obs_channels,None,None,None)
 
   py_env = gym_wrapper.GymWrapper(
     gym_env,
@@ -266,11 +266,13 @@ def load_carla_env(
     auto_reset=True,
   )
 
-  eval_py_env = gym_wrapper.GymWrapper(
-    gym_env_eval,
-    discount=discount,
-    auto_reset=True,
-  )
+  #eval_py_env = gym_wrapper.GymWrapper(
+  #  gym_env_eval,
+  #  discount=discount,
+  #  auto_reset=True,
+  #)
+
+  eval_py_env = py_env
 
 
   if action_repeat > 1:
