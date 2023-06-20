@@ -121,18 +121,16 @@ class PrefInterface:
 
     def ask_user(self, s1, s2):
         print("!!!!!!!!!!!!!!ask user!!!!!!!!!!!!")
-        print(s1.frames[-1][:, :, -3:].shape)
-        print(s1.frames[-1][:, :, -3:]*255)
 
         vid = []
         seg_len = len(s1)
         print(seg_len)
         for t in range(seg_len):
-            border = np.zeros((84, 10, 3), dtype=np.uint8)
+            border = np.zeros((64, 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
-            frame = np.hstack((s1.frames[t][:, :, -3:],
+            frame = np.hstack((s1.frames[t][0,:, :, -3:],
                                border,
-                               s2.frames[t][:, :, -3:]))
+                               s2.frames[t][0,:, :, -3:]))
             vid.append(frame)
         #n_pause_frames = 7
         #for _ in range(n_pause_frames):

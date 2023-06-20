@@ -10,6 +10,7 @@ import tensorflow.compat.v1 as tf
 #tf.enable_v2_behavior()
 tf.disable_v2_behavior()
 
+
 from utils import RunningStat, batch_iter
 
 

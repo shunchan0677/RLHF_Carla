@@ -43,6 +43,7 @@ import numpy as np
 import os
 import tensorflow as tf
 tf.compat.v1.enable_v2_behavior()
+#tf.compat.v1.enable_resource_variables()
 import time
 import collections
 
@@ -126,6 +127,7 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
        mb_obs_allenvs = mb_obs.reshape(nenvs * nsteps, 64, 64, 3*4)
 
        rewards_allenvs = self.reward_predictor.raw_rewards(mb_obs_allenvs)[0]
+       #rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
 
        #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
        #mb_rewards = mb_rewards.flatten()
@@ -496,6 +498,9 @@ def train_eval(
     ckpt_save_dir=None,
     gen_segments=None):  # Name of single observation channel, ['camera', 'lidar', 'birdeye']
   # Setup GPU
+  #tf.compat.v1.enable_resource_variables()
+
+
   gpus = tf.config.experimental.list_physical_devices('GPU')
   if gpu_allow_growth:
     for gpu in gpus:
@@ -526,6 +531,7 @@ def train_eval(
   ]
 
   global_step = tf.compat.v1.train.get_or_create_global_step()
+  
 
   # Whether to record for summary
   with tf.summary.record_if(
@@ -641,12 +647,12 @@ def train_eval(
         agent=tf_agent,
         global_step=global_step,
         metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
-        max_to_keep=2)
+        max_to_keep=None)
     policy_checkpointer = common.Checkpointer(
         ckpt_dir=os.path.join(root_dir, 'policy'),
         policy=eval_policy,
         global_step=global_step,
-        max_to_keep=2)
+        max_to_keep=None)
     rb_checkpointer = common.Checkpointer(
         ckpt_dir=os.path.join(root_dir, 'replay_buffer'),
         max_to_keep=1,
@@ -920,7 +926,7 @@ def run(general_params,
         rpt_proc = start_reward_predictor_training(
             cluster_dict=cluster_dict,
             make_reward_predictor=make_reward_predictor,
-            just_pretrain=False,
+            just_pretrain=True,
             pref_pipe=pref_pipe,
             start_policy_training_pipe=start_policy_training_flag,
             max_prefs=general_params['max_prefs'],
