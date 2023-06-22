@@ -926,7 +926,7 @@ def run(general_params,
         rpt_proc = start_reward_predictor_training(
             cluster_dict=cluster_dict,
             make_reward_predictor=make_reward_predictor,
-            just_pretrain=True,
+            just_pretrain=False,
             pref_pipe=pref_pipe,
             start_policy_training_pipe=start_policy_training_flag,
             max_prefs=general_params['max_prefs'],
