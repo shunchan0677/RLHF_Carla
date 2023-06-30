@@ -276,13 +276,13 @@ class RewardPredictorEnsemble:
         for rp in self.rps:
             #print(np.asarray(s1s).shape)
             #print(np.asarray(s2s).shape)
-            feed_dict[rp.s1] = s1s[0]
-            feed_dict[rp.s2] = s2s[0]
+            feed_dict[rp.s1] = s1s
+            feed_dict[rp.s2] = s2s
             #print(np.asarray(feed_dict[rp.s1]).shape)
             #print(np.asarray(feed_dict[rp.s2]).shape)
-            if(np.asarray(feed_dict[rp.s1]).shape != (25,1,64,64,12)):
-                feed_dict[rp.s1] = s1s[0][0]
-                feed_dict[rp.s2] = s2s[0][0]
+            #if(np.asarray(feed_dict[rp.s1]).shape != (25,1,64,64,12)):
+            #    feed_dict[rp.s1] = s1s[0][0]
+            #    feed_dict[rp.s2] = s2s[0][0]
                 #print("reshape")
                 #print(np.asarray(s1s).shape)
                 #print(np.asarray(s2s).shape)
@@ -317,8 +317,8 @@ class RewardPredictorEnsemble:
         prefs = [pref for k1, k2, pref, in batch]
         feed_dict = {}
         for rp in self.rps:
-            feed_dict[rp.s1] = s1s[0]
-            feed_dict[rp.s2] = s2s[0]
+            feed_dict[rp.s1] = s1s
+            feed_dict[rp.s2] = s2s
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = False
         summaries = self.sess.run(self.summaries, feed_dict)
