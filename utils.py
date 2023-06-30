@@ -138,8 +138,8 @@ class VideoRenderer:
             x = int(fraction_played * width)
             frames[t][-1][x] = 128
 
-            frames[t] = np.asarray(frames[t]*255)
-            zoomed_frame = zoom(frames[t], (self.zoom_factor, self.zoom_factor, 1))
+            frames_2 = np.asarray(frames[t])
+            zoomed_frame = zoom(frames_2, (self.zoom_factor, self.zoom_factor, 1))
             #print("zoomed_frame.shape")
             #print(zoomed_frame.shape)
             v.imshow(zoomed_frame)
@@ -164,7 +164,7 @@ class VideoRenderer:
                     t = 0
                 except queue.Empty:
                     t = (t + self.playback_speed) % len(frames)
-                    time.sleep(1/60)
+                    #time.sleep(1/1200)
 
     def get_queue_most_recent(self):
         # Make sure we at least get something

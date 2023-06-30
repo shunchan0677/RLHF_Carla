@@ -24,7 +24,7 @@ class PrefInterface:
         if not synthetic_prefs:
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
                                           mode=VideoRenderer.restart_on_get_mode,
-                                          playback_speed=8,
+                                          playback_speed=4,
                                           zoom=4)
         else:
             self.renderer = None
@@ -125,16 +125,16 @@ class PrefInterface:
         vid = []
         seg_len = len(s1)
         print(seg_len)
+        n_pause_frames = 3
+        for _ in range(n_pause_frames):
+            vid.append(np.zeros((64, 138, 3), dtype=np.uint8))
         for t in range(seg_len):
             border = np.zeros((64, 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
-            frame = np.hstack((s1.frames[t][0,:, :, -3:],
+            frame = np.hstack((s1.frames[t][:, :, -3:],
                                border,
-                               s2.frames[t][0,:, :, -3:]))
+                               s2.frames[t][:, :, -3:]))
             vid.append(frame)
-        #n_pause_frames = 7
-        #for _ in range(n_pause_frames):
-        #    vid.append(np.copy(vid[_]))
         print("vid.shape")
         print(len(vid))
         print(vid[0].shape)

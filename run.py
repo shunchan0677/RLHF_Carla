@@ -100,7 +100,12 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
     self.gen_segments = gen_segments
     self.segment = Segment()
     self.seg_pipe = seg_pipe
-    self.nsteps = 1
+    self.nsteps = 5
+    self.first = False
+    self.obs =  np.zeros((1, 64, 64, 3 * 4), dtype=np.uint8)
+    self.mb_obs = []
+    self.reward = []
+    self.done = []
 
     if(self.reward_predictor):
        print("reward_predictor")
@@ -119,26 +124,40 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
        nstack = 4
        nsteps = self.nsteps
        nh, nw, nc = observation["birdeye"].shape
-       obs =  np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
-       obs[:, :, :, -3:] = observation["birdeye"][:, :, :]
-       mb_obs = []
-       mb_obs.append(np.copy(obs))
-       mb_obs = np.asarray(mb_obs, dtype=np.uint8).swapaxes(1, 0)
-       mb_obs_allenvs = mb_obs.reshape(nenvs * nsteps, 64, 64, 3*4)
+       self.obs = np.roll(self.obs, shift=-3, axis=3)
+       self.obs[:, :, :, -3:] = observation["birdeye"][:, :, :]
+       
+       self.mb_obs.append(np.copy(self.obs))
+       self.reward.append(reward)
+       self.done.append(done)
+       if(len(self.mb_obs)==nsteps):
+          #self.mb_obs.pop(0)
+          #self.reward.pop(0)
+          #self.done.pop(0)
+          mb_obs = np.asarray(self.mb_obs, dtype=np.uint8).swapaxes(1, 0)
+          if self.gen_segments:
+              self.update_segment_buffer(mb_obs, [self.reward], [self.done])
+          
+          self.mb_obs = []
+          self.reward = []
+          self.done = []
 
-       rewards_allenvs = self.reward_predictor.raw_rewards(mb_obs_allenvs)[0]
-       #rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
+       mb_obs_allenvs = self.obs #np.asarray(self.obs).reshape(nenvs * len(self.obs), 64, 64, 3*4)
+
+       #rewards_allenvs = self.reward_predictor.raw_rewards(mb_obs_allenvs)[0]
+       rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
 
        #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
        #mb_rewards = mb_rewards.flatten()
-       if self.gen_segments:
-            self.update_segment_buffer([mb_obs], [[reward]], [[done]])
 
        # Save frames for episode rendering
        #if self.episode_vid_queue is not None:
        #     self.update_episode_frame_buffer(mb_obs, done)
 
-       reward = rewards_allenvs[0]
+       reward = rewards_allenvs[-1]
+
+       if done == True:
+          self.obs =  np.zeros((1, 64, 64, 3 * 4), dtype=np.uint8)
 
 
 
@@ -155,7 +174,8 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
   def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
         # Segments are only generated from the first worker.
         # Empirically, this seems to work fine.
-        e0_obs = (mb_obs[0] * 255).astype(np.uint8)
+        #e0_obs = (mb_obs[0] * 255).astype(np.uint8)
+        e0_obs = mb_obs[0]
         e0_rew = mb_rewards[0]
         e0_dones = mb_dones[0]
 
