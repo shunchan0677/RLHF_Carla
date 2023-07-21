@@ -16,7 +16,7 @@ import numpy as np
 import os
 import tensorflow as tf
 
-tf.enable_v2_behavior()
+#tf.enable_v2_behavior()
 import time
 import collections
 
@@ -190,6 +190,7 @@ def compute_summaries(metrics,
       for m in metrics:
         tag = m.name
         tf.compat.v2.summary.scalar(name=tag, data=m.result(), step=train_step)
+        print(tag,m.result())
 
   # Concat input images of different episodes and generate reconstructed images.
   # Shape of images is [[images in episode as timesteps]].
@@ -539,101 +540,21 @@ def train_eval(
           'with a random policy.', initial_collect_steps)
       initial_collect_driver.run()
 
-    compute_summaries(
-        eval_metrics,
-        eval_tf_env,
-        eval_policy,
-        train_step=global_step,
-        summary_writer=summary_writer,
-        num_episodes=1,
-        num_episodes_to_render=1,
-        model_net=model_net,
-        fps=10,
-        image_keys=input_names+mask_names)
 
-    # Dataset generates trajectories with shape [Bxslx...]
-    dataset = replay_buffer.as_dataset(
-        num_parallel_calls=3,
-        sample_batch_size=batch_size,
-        num_steps=sequence_length + 1).prefetch(3)
-    iterator = iter(dataset)
-
-    # Get train step
-    def train_step():
-      experience, _ = next(iterator)
-      return tf_agent.train(experience)
-    train_step = common.function(train_step)
-
-    if agent_name == 'latent_sac':
-      def train_model_step():
-        experience, _ = next(iterator)
-        return tf_agent.train_model(experience)
-      train_model_step = common.function(train_model_step)
-
-    # Training initializations
-    time_step = None
-    time_acc = 0
-    env_steps_before = env_steps.result().numpy()
-
-    # Start training
-    for iteration in range(num_iterations):
-      start_time = time.time()
-
-      if agent_name == 'latent_sac' and iteration < initial_model_train_steps:
-        train_model_step()
-      else:
-        # Run collect
-        time_step, _ = collect_driver.run(time_step=time_step)
-
-        # Train an iteration
-        for _ in range(train_steps_per_iteration):
-          train_step()
-
-      time_acc += time.time() - start_time
-
-      # Log training information
-      if global_step.numpy() % log_interval == 0:
-        logging.info('env steps = %d, average return = %f', env_steps.result(),
-                     average_return.result())
-        env_steps_per_sec = (env_steps.result().numpy() -
-                             env_steps_before) / time_acc
-        logging.info('%.3f env steps/sec', env_steps_per_sec)
-        tf.summary.scalar(
-            name='env_steps_per_sec',
-            data=env_steps_per_sec,
-            step=env_steps.result())
-        time_acc = 0
-        env_steps_before = env_steps.result().numpy()
-
-      # Get training metrics
-      for train_metric in train_metrics:
-        train_metric.tf_summaries(train_step=env_steps.result())
-
-      # Evaluation
-      if global_step.numpy() % eval_interval == 0:
-        # Log evaluation metrics
-        compute_summaries(
-            eval_metrics,
-            eval_tf_env,
-            eval_policy,
-            train_step=global_step,
-            summary_writer=summary_writer,
-            num_episodes=num_eval_episodes,
-            num_episodes_to_render=num_images_per_summary,
-            model_net=model_net,
-            fps=10,
-            image_keys=input_names+mask_names)
-
-      # Save checkpoints
-      global_step_val = global_step.numpy()
-      if global_step_val % train_checkpoint_interval == 0:
-        train_checkpointer.save(global_step=global_step_val)
-
-      if global_step_val % policy_checkpoint_interval == 0:
-        policy_checkpointer.save(global_step=global_step_val)
-
-      if global_step_val % rb_checkpoint_interval == 0:
-        rb_checkpointer.save(global_step=global_step_val)
+    for i in range(10): 
+	    compute_summaries(
+		eval_metrics,
+		eval_tf_env,
+		eval_policy,
+		train_step=global_step,
+		summary_writer=summary_writer,
+		num_episodes=1,
+		num_episodes_to_render=1,
+		model_net=model_net,
+		fps=10,
+		image_keys=input_names+mask_names)
+    
+    print("Evaluation Finish!!")
 
 
 def main(_):
