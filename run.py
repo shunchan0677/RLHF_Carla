@@ -1170,7 +1170,7 @@ def start_reward_predictor_training(cluster_dict,
                 rew_pred.train(pref_db_train, pref_db_val, val_interval)
 
                 #print("!!!!!!!!!!!!!!!!!!!!!!test2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                if i and i % ckpt_interval == 0:
+                if i and i % 10 == 0:
                     rew_pred.save()
             print("Reward predictor pretraining done")
             rew_pred.save()
@@ -1183,7 +1183,7 @@ def start_reward_predictor_training(cluster_dict,
         i = 0
         while True:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
-            save_prefs(log_dir, pref_db_train, pref_db_val)
+            #save_prefs(log_dir, pref_db_train, pref_db_val)
             #print("!!!!!!!!!!!!rew_pred.train!!!!!!!!!!!!")
             rew_pred.train(pref_db_train, pref_db_val, val_interval)
             #print("rew_pred.train end")

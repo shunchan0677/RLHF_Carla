@@ -161,7 +161,7 @@ def add_reward_predictor_args(parser):
                         help='Directory to load reward predictor checkpoint from '
                              '(loads latest checkpoint in the specified directory)')
     parser.add_argument('--reward_predictor_ckpt_interval',
-                        type=int, default=1,
+                        type=int, default=100,
                         help='No. training epochs between reward '
                              'predictor checkpoints')
 

@@ -51,6 +51,7 @@ import gym
 import gym_carla
 
 from tf_agents.agents.ddpg import critic_network
+from tf_agents.networks import value_network
 from tf_agents.agents.sac import sac_agent
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.drivers import dynamic_step_driver
@@ -72,6 +73,8 @@ from interp_e2e_driving.agents.latent_sac import latent_sac_agent
 from interp_e2e_driving.environments import filter_observation_wrapper
 from interp_e2e_driving.networks import sequential_latent_network
 from interp_e2e_driving.utils import gif_utils
+from collections import namedtuple
+
 
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -593,44 +596,56 @@ def train_eval(
           observation_fc_layer_params=critic_obs_fc_layers,
           action_fc_layer_params=critic_action_fc_layers,
           joint_fc_layer_params=critic_joint_fc_layers)
+      
+
+      value_net = value_network.ValueNetwork(
+          latent_observation_spec,
+          fc_layer_params=(256, 256),
+          dropout_layer_params=None,
+          activation_fn=tf.keras.activations.relu,
+          kernel_initializer=None,
+          batch_squash=True,
+          dtype=tf.float32,
+          name='ValueNetwork'
+      )
 
       # Build the inner SAC agent based on latent space
-      #inner_agent = sac_agent.SacAgent(
-      #    latent_time_step_spec,
-      #    action_spec,
-      #    actor_network=actor_net,
-      #    critic_network=critic_net,
-      #    actor_optimizer=tf.compat.v1.train.AdamOptimizer(
-      #        learning_rate=actor_learning_rate),
-      #    critic_optimizer=tf.compat.v1.train.AdamOptimizer(
-      #        learning_rate=critic_learning_rate),
-      #    alpha_optimizer=tf.compat.v1.train.AdamOptimizer(
-      #        learning_rate=alpha_learning_rate),
-      #    target_update_tau=target_update_tau,
-      #    target_update_period=target_update_period,
-      #    td_errors_loss_fn=td_errors_loss_fn,
-      #    gamma=gamma,
-      #    reward_scale_factor=reward_scale_factor,
-      #    gradient_clipping=gradient_clipping,
-      #    debug_summaries=debug_summaries,
-      #    summarize_grads_and_vars=summarize_grads_and_vars,
-      #    train_step_counter=global_step)
+      inner_agent = sac_agent.SacAgent(
+          latent_time_step_spec,
+          action_spec,
+          actor_network=actor_net,
+          critic_network=critic_net,
+          actor_optimizer=tf.compat.v1.train.AdamOptimizer(
+              learning_rate=actor_learning_rate),
+          critic_optimizer=tf.compat.v1.train.AdamOptimizer(
+              learning_rate=critic_learning_rate),
+          alpha_optimizer=tf.compat.v1.train.AdamOptimizer(
+              learning_rate=alpha_learning_rate),
+          target_update_tau=target_update_tau,
+          target_update_period=target_update_period,
+          td_errors_loss_fn=td_errors_loss_fn,
+          gamma=gamma,
+          reward_scale_factor=reward_scale_factor,
+          gradient_clipping=gradient_clipping,
+          debug_summaries=debug_summaries,
+          summarize_grads_and_vars=summarize_grads_and_vars,
+          train_step_counter=global_step)
 
-      inner_agent = ppo_agent.PPOAgent(
+      inner_agent_ppo = ppo_agent.PPOAgent(
           latent_time_step_spec,
           action_spec,
           optimizer=tf.compat.v1.train.AdamOptimizer(
               learning_rate=actor_learning_rate),
           actor_net=actor_net,
-          value_net=critic_net,
+          value_net=value_net,
           train_step_counter=global_step)
-      inner_agent.initialize()
+      inner_agent_ppo.initialize()
 
       # Build the latent sac agent
       tf_agent = latent_sac_agent.LatentSACAgent(
           time_step_spec,
           action_spec,
-          inner_agent=inner_agent,
+          inner_agent=inner_agent_ppo,
           model_network=model_net,
           model_optimizer=tf.compat.v1.train.AdamOptimizer(
               learning_rate=model_learning_rate),
@@ -716,17 +731,17 @@ def train_eval(
           'with a random policy.', initial_collect_steps)
       initial_collect_driver.run()
 
-    compute_summaries(
-        eval_metrics,
-        eval_tf_env,
-        eval_policy,
-        train_step=global_step,
-        summary_writer=summary_writer,
-        num_episodes=1,
-        num_episodes_to_render=1,
-        model_net=model_net,
-        fps=10,
-        image_keys=input_names+mask_names)
+    #compute_summaries(
+    #    eval_metrics,
+    #    eval_tf_env,
+    #    eval_policy,
+    #    train_step=global_step,
+    #    summary_writer=summary_writer,
+    #    num_episodes=1,
+    #    num_episodes_to_render=1,
+    #    model_net=model_net,
+    #    fps=10,
+    #    image_keys=input_names+mask_names)
 
     # Dataset generates trajectories with shape [Bxslx...]
     dataset = replay_buffer.as_dataset(
@@ -737,8 +752,41 @@ def train_eval(
 
     # Get train step
     def train_step():
-      experience, _ = next(iterator)
-      return tf_agent.train(experience)
+      experience, data = next(iterator)
+
+      print(experience)
+      print(experience.policy_info)
+      print(data)
+
+      #dummy_policy_info = {
+      #    'loc': tf.constant([0.0, 0.0]),
+      #    'scale': tf.constant([1.0, 1.0])
+      #}
+
+      # ダミーのlocとscaleを定義
+      dummy_loc = tf.constant([0.0, 0.0])
+      dummy_scale = tf.constant([1.0, 1.0])
+
+      # タプル型のpolicy_infoを定義
+      PolicyInfo = namedtuple('PolicyInfo', ['loc', 'scale'])
+      dummy_policy_info = PolicyInfo(loc=dummy_loc, scale=dummy_scale)
+      
+      current_trajectory = experience
+
+      # 既存のTrajectoryにダミーのpolicy_infoを追加して新しいTrajectoryを作成
+      new_trajectory = trajectory.Trajectory(
+          step_type=current_trajectory.step_type,
+          observation=current_trajectory.observation,
+          action=current_trajectory.action,
+          policy_info=dummy_policy_info,
+          next_step_type=current_trajectory.next_step_type,
+          reward=current_trajectory.reward,
+          discount=current_trajectory.discount
+      )
+
+      return inner_agent_ppo.train(experience)
+      #return tf_agent.train(experience)
+      #return tf_agent.train(new_trajectory)
     train_step = common.function(train_step)
 
     if agent_name == 'latent_sac':
@@ -755,8 +803,11 @@ def train_eval(
     # Start training
     for iteration in range(num_iterations):
       start_time = time.time()
+      #print(iteration)
+      #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
       if agent_name == 'latent_sac' and iteration < initial_model_train_steps:
+        #print("train_model_step")
         train_model_step()
       else:
         # Run collect
@@ -764,7 +815,88 @@ def train_eval(
 
         # Train an iteration
         for _ in range(train_steps_per_iteration):
-          train_step()
+          #print("train_step")
+          experience, data = next(iterator)
+
+          transitions = trajectory.to_transition(experience)
+          time_steps, policy_steps, next_time_steps = transitions
+          actions = policy_steps.action
+
+
+          #print("!!!!!!!!!!!!!!!policy info!!!!!!!!!!!!!!!!!!!!!")
+          #time_step = tf_env.current_time_step()
+          #action_step = collect_policy.action(time_step)
+          #info = policy_steps.info
+          #print(experience.policy_info)
+          #print(experience.action)
+
+          # If persistent=False, can only require gradient for one time.
+          # If watch_accessed_variables=False, must indicate which variables to request gradient
+          with tf.GradientTape() as tape:
+            # Sample the latent from model network
+            images = experience.observation
+            latent_samples_and_dists = model_net.sample_posterior(
+                images, actions, experience.step_type)
+            latents, _ = latent_samples_and_dists
+            if isinstance(latents, (tuple, list)):
+              latents = tf.concat(latents, axis=-1)
+            # Shape [B,...]
+            latent, next_latent = tf.unstack(latents[:, -2:], axis=1)
+
+          #experience.observation = latent
+
+          #tensor_expanded = tf.expand_dims(latents, axis=2)
+
+          # Tile the tensor to shape (1, 11, 2, 288)
+          #tensor_b = tf.tile(tensor_expanded, [1, 1, 2, 1])
+
+            new_trajectory = trajectory.Trajectory(
+                step_type=experience.step_type,
+                observation=tf.stop_gradient(latents),
+                action=experience.action,
+                policy_info=experience.policy_info,
+                next_step_type=experience.next_step_type,
+                reward=experience.reward,
+                discount=experience.discount
+            )
+
+            #print("???????????????????????????????????????????????????")
+            #print(new_trajectory)
+
+
+            new_time_step = ts.TimeStep(new_trajectory.step_type,new_trajectory.reward,new_trajectory.discount,new_trajectory.observation)
+            policy_step = inner_agent_ppo.collect_policy.action(new_time_step)
+            policy_info = policy_step.info
+            #print(policy_info)
+
+            new_trajectory2 = trajectory.Trajectory(
+                step_type=new_trajectory.step_type,
+                observation=new_trajectory.observation,
+                action=new_trajectory.action,
+                policy_info=policy_info,
+                next_step_type=new_trajectory.next_step_type,
+                reward=new_trajectory.reward,
+                discount=new_trajectory.discount
+            )
+            
+            loss = inner_agent_ppo.train(new_trajectory2)
+            #print(loss)
+
+          #train_step()
+
+          #time_step = eval_tf_env.reset()
+          #policy_state = eval_policy.get_initial_state(eval_tf_env.batch_size)
+
+
+          #action_step = eval_policy.action(time_step, policy_state)
+          #next_time_step = eval_tf_env.step(action_step.action)
+          #policy_state = action_step.state
+
+          #trajectories = trajectory.from_transition(time_step, action_step, next_time_step)
+
+          #trajectories = replay_buffer.gather_all()
+          #loss_info = inner_agent_ppo.train(trajectories)
+          #replay_buffer.clear()
 
       time_acc += time.time() - start_time
 
@@ -781,6 +913,8 @@ def train_eval(
             step=env_steps.result())
         time_acc = 0
         env_steps_before = env_steps.result().numpy()
+
+
 
       # Get training metrics
       for train_metric in train_metrics:
