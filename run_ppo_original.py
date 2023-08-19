@@ -76,7 +76,6 @@ from interp_e2e_driving.utils import gif_utils
 from collections import namedtuple
 
 
-
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_string('experiment_name', None,
@@ -135,9 +134,6 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
        self.reward.append(reward)
        self.done.append(done)
        if(len(self.mb_obs)==nsteps):
-          #self.mb_obs.pop(0)
-          #self.reward.pop(0)
-          #self.done.pop(0)
           mb_obs = np.asarray(self.mb_obs, dtype=np.uint8).swapaxes(1, 0)
           if self.gen_segments:
               self.update_segment_buffer(mb_obs, [self.reward], [self.done])
@@ -146,18 +142,10 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
           self.reward = []
           self.done = []
 
-       mb_obs_allenvs = self.obs #np.asarray(self.obs).reshape(nenvs * len(self.obs), 64, 64, 3*4)
-
-       #rewards_allenvs = self.reward_predictor.raw_rewards(mb_obs_allenvs)[0]
+       mb_obs_allenvs = self.obs 
        rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
 
-       #mb_rewards = rewards_allenvs.reshape(nenvs, nsteps)
-       #mb_rewards = mb_rewards.flatten()
-
-       # Save frames for episode rendering
-       #if self.episode_vid_queue is not None:
-       #     self.update_episode_frame_buffer(mb_obs, done)
-
+       info["original_rewards"] = reward
        reward = rewards_allenvs[-1]
 
        if done == True:
@@ -213,6 +201,29 @@ class FilterObservationWrapperRewards(wrappers.PyEnvironmentBaseWrapper):
             if e0_dones[step]:
                 self.episode_vid_queue.put(self.episode_frames)
                 self.episode_frames = []
+
+class CustomGymWrapper(gym_wrapper.GymWrapper):
+
+    def __init__(self, gym_env, discount=1.0, auto_reset=True):
+        super(CustomGymWrapper, self).__init__(gym_env, discount=discount, auto_reset=auto_reset)
+
+    def _step(self, action):
+        observation, reward, done, info = self._gym_env.step(action)
+        if done:
+            step_type = ts.StepType.LAST
+        elif self._current_time_step is None:
+            step_type = ts.StepType.FIRST
+        else:
+            step_type = ts.StepType.MID
+
+        # Include 'info' in the policy_info field of the TimeStep
+        augmented_observation = {
+          "original_observation": observation,
+          "info": info
+        }
+
+        return ts.TimeStep(step_type, reward, self._discount, augmented_observation)
+
 
 
 @gin.configurable
@@ -286,14 +297,15 @@ def load_carla_env(
     gym_env = FilterObservationWrapperRewards(gym_env, obs_channels,reward_predictor,gen_segments,seg_pipe)
     #gym_env_eval = FilterObservationWrapperRewards(gym_env, obs_channels,None,None,None)
 
-  py_env = gym_wrapper.GymWrapper(
+  py_env = CustomGymWrapper(
     gym_env,
     discount=discount,
     auto_reset=True,
   )
 
-  #eval_py_env = gym_wrapper.GymWrapper(
-  #  gym_env_eval,
+
+  #py_env = gym_wrapper.GymWrapper(
+  #  gym_env,
   #  discount=discount,
   #  auto_reset=True,
   #)
@@ -711,6 +723,13 @@ def train_eval(
         initial_collect_policy,
         observers=replay_observer + train_metrics,
         num_steps=initial_collect_steps)
+    
+
+
+
+
+
+
 
     collect_driver = dynamic_step_driver.DynamicStepDriver(
         tf_env,
@@ -754,36 +773,6 @@ def train_eval(
     def train_step():
       experience, data = next(iterator)
 
-      print(experience)
-      print(experience.policy_info)
-      print(data)
-
-      #dummy_policy_info = {
-      #    'loc': tf.constant([0.0, 0.0]),
-      #    'scale': tf.constant([1.0, 1.0])
-      #}
-
-      # ダミーのlocとscaleを定義
-      dummy_loc = tf.constant([0.0, 0.0])
-      dummy_scale = tf.constant([1.0, 1.0])
-
-      # タプル型のpolicy_infoを定義
-      PolicyInfo = namedtuple('PolicyInfo', ['loc', 'scale'])
-      dummy_policy_info = PolicyInfo(loc=dummy_loc, scale=dummy_scale)
-      
-      current_trajectory = experience
-
-      # 既存のTrajectoryにダミーのpolicy_infoを追加して新しいTrajectoryを作成
-      new_trajectory = trajectory.Trajectory(
-          step_type=current_trajectory.step_type,
-          observation=current_trajectory.observation,
-          action=current_trajectory.action,
-          policy_info=dummy_policy_info,
-          next_step_type=current_trajectory.next_step_type,
-          reward=current_trajectory.reward,
-          discount=current_trajectory.discount
-      )
-
       return inner_agent_ppo.train(experience)
       #return tf_agent.train(experience)
       #return tf_agent.train(new_trajectory)
@@ -806,10 +795,10 @@ def train_eval(
       #print(iteration)
       #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
-      if agent_name == 'latent_sac' and iteration < initial_model_train_steps:
-        #print("train_model_step")
-        train_model_step()
-      else:
+      if agent_name == 'latent_sac':
+        print("train_model_step")
+        #train_model_step()
+        #else:
         # Run collect
         time_step, _ = collect_driver.run(time_step=time_step)
 
@@ -817,6 +806,11 @@ def train_eval(
         for _ in range(train_steps_per_iteration):
           #print("train_step")
           experience, data = next(iterator)
+
+          print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!experience!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+          print(experience.policy_info)
+
+          print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!policy_info!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
           transitions = trajectory.to_transition(experience)
           time_steps, policy_steps, next_time_steps = transitions
@@ -867,7 +861,6 @@ def train_eval(
             new_time_step = ts.TimeStep(new_trajectory.step_type,new_trajectory.reward,new_trajectory.discount,new_trajectory.observation)
             policy_step = inner_agent_ppo.collect_policy.action(new_time_step)
             policy_info = policy_step.info
-            #print(policy_info)
 
             new_trajectory2 = trajectory.Trajectory(
                 step_type=new_trajectory.step_type,
